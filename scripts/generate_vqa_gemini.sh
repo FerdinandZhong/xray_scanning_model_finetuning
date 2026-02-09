@@ -14,6 +14,28 @@ echo "Quality: Good (vision-capable model)"
 echo "Time: ~1-2 hours for full dataset"
 echo ""
 
+# Check if running on macOS and warn about sleep
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    echo "🍎 Running on macOS detected"
+    echo ""
+    echo "⚠️  IMPORTANT: Prevent laptop sleep during generation"
+    echo "   Option 1 (RECOMMENDED): This script will use 'caffeinate' to prevent sleep"
+    echo "   Option 2: Manually: System Settings → Energy Saver → Prevent sleep"
+    echo "   Option 3: Use 'caffeinate -i' in terminal before running this script"
+    echo ""
+    USE_CAFFEINATE="${USE_CAFFEINATE:-yes}"
+    if [ "$USE_CAFFEINATE" = "yes" ]; then
+        echo "✓ Will use 'caffeinate' to prevent sleep during generation"
+        CAFFEINATE_CMD="caffeinate -i"
+    else
+        echo "⚠️ Sleep prevention disabled (set USE_CAFFEINATE=yes to enable)"
+        CAFFEINATE_CMD=""
+    fi
+    echo ""
+else
+    CAFFEINATE_CMD=""
+fi
+
 # Configuration
 MODEL="${MODEL:-gemini-2.0-flash-exp}"
 SAMPLES_PER_IMAGE="${SAMPLES_PER_IMAGE:-3}"
@@ -84,7 +106,7 @@ echo "============================"
 export OPENAI_API_BASE="$API_BASE"
 export OPENAI_API_KEY="${API_KEY:-${OPENAI_API_KEY:-}}"
 
-python data/llm_vqa_generator.py \
+$CAFFEINATE_CMD python data/llm_vqa_generator.py \
   --annotations data/stcray/train/annotations.json \
   --images-dir data/stcray/train/images \
   --output data/stcray_vqa_gemini_test.jsonl \

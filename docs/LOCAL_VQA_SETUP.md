@@ -291,6 +291,17 @@ source ~/.bashrc
 - **VQA generation:** 1-2 hours for full dataset
 - **Cost:** ~$9 (Gemini) to ~$900 (Claude)
 
+### MacBook Users: Prevent Sleep
+
+**Important:** VQA generation takes 1-2 hours. The script automatically prevents your MacBook from sleeping using `caffeinate`.
+
+**No action needed** - just run the script normally:
+```bash
+./scripts/generate_vqa_gemini.sh
+```
+
+For more details and advanced options, see: [`docs/MACOS_LONG_RUNNING.md`](MACOS_LONG_RUNNING.md)
+
 ## Next Steps
 
 After VQA generation completes:

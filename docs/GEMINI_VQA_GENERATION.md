@@ -500,6 +500,30 @@ Automatic checkpointing every 100 images:
 - Image complexity
 - Response length
 
+### Running on MacBook
+
+**Sleep Prevention (Automatic):**
+
+The script automatically prevents your MacBook from sleeping during generation using `caffeinate`. No manual intervention needed.
+
+**Just plug into AC power and run:**
+```bash
+./scripts/generate_vqa_gemini.sh
+```
+
+**Advanced options:**
+```bash
+# Disable automatic sleep prevention (not recommended)
+USE_CAFFEINATE=no ./scripts/generate_vqa_gemini.sh
+
+# Use tmux for extra resilience
+tmux new -s vqa
+./scripts/generate_vqa_gemini.sh
+# Detach: Ctrl+B, then D
+```
+
+See [`docs/MACOS_LONG_RUNNING.md`](MACOS_LONG_RUNNING.md) for more details.
+
 ## Quality Assessment
 
 Gemini 2.0 Flash produces good quality VQA pairs:
