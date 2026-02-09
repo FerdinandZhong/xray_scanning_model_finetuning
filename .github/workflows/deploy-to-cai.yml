@@ -4,8 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       vllm_endpoint:
-        description: 'External vLLM server endpoint (e.g., http://server:8000/v1)'
-        required: true
+        description: 'External vLLM server endpoint (e.g., http://server:8000/v1) - Optional: can configure in CAI later'
+        required: false
+        default: ''
         type: string
       force_reinstall:
         description: 'Force environment reinstall'
