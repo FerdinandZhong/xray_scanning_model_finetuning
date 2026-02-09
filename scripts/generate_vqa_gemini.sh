@@ -37,7 +37,7 @@ else
 fi
 
 # Configuration
-MODEL="${MODEL:-gemini-2.0-flash-exp}"
+MODEL="${MODEL:-gemini-2.0-flash}"
 SAMPLES_PER_IMAGE="${SAMPLES_PER_IMAGE:-3}"
 API_BASE="${API_BASE:-https://ai-gateway.dev.cloudops.cloudera.com/v1}"
 

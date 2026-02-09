@@ -81,59 +81,59 @@ python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.cuda
 
 ### 2. Data Preparation
 
-```bash
-# Download OPIXray dataset (follow manual instructions)
-python data/download_opixray.py --output-dir data/opixray
+**Recommended: Use STCray dataset (production-grade, 46k images)**
 
-# Verify dataset structure
-python data/download_opixray.py --verify --output-dir data/opixray
+```bash
+# Download STCray dataset from HuggingFace
+python data/download_stcray.py --output-dir data/stcray
+
+# Generate VQA pairs using Gemini 2.0 Flash (~$9, 1-2 hours)
+export API_KEY="your-api-key"
+./scripts/generate_vqa_gemini.sh
+
+# This creates:
+# - data/stcray_vqa_train.jsonl (~90k VQA pairs)
+# - data/stcray_vqa_val.jsonl (~48k VQA pairs)
+```
+
+**Alternative: Use OPIXray dataset (smaller, for testing)**
+
+```bash
+# Download OPIXray dataset
+python data/download_opixray.py --output-dir data/opixray
 
 # Create VQA pairs from annotations
 python data/create_vqa_pairs.py \
   --opixray-root data/opixray \
   --split all \
   --samples-per-image 2
-
-# This creates:
-# - data/opixray_vqa_train.jsonl (focused on item recognition)
-# - data/opixray_vqa_val.jsonl
-# - data/opixray_vqa_test.jsonl
-
-# Optional: Add declaration metadata for post-processing validation
-# (Not used in training, only for testing post-processing logic)
-python data/declaration_simulator.py \
-  --input data/opixray_vqa_train.jsonl \
-  --output data/opixray_vqa_train_with_meta.jsonl
-
-# Note: You can train directly with opixray_vqa_*.jsonl files
-# Declaration comparison is handled in post-processing, not in the VLM
 ```
 
 ### 3. Training (Phase 1: Single-Node)
 
 ```bash
-# Train on local multi-GPU (automatic DDP)
-python training/train_local.py --config configs/train_local.yaml
+# Train on local multi-GPU with STCray dataset (automatic DDP)
+python training/train_local.py --config configs/train_stcray.yaml
 
 # Monitor training with TensorBoard
-tensorboard --logdir outputs/qwen25vl_lora_phase1/logs
+tensorboard --logdir outputs/qwen25vl_lora_stcray/logs
 ```
 
-**Expected:** 6-8 hours on 4x24GB GPUs for 3 epochs
+**Expected:** 6-8 hours on 4x24GB GPUs for 3 epochs with STCray (~138k VQA pairs)
 
 ### 4. Evaluation
 
 ```bash
-# VQA metrics
+# VQA metrics on STCray validation set
 python evaluation/eval_vqa.py \
-  --model outputs/qwen25vl_lora_phase1 \
-  --test-file data/opixray_vqa_test.jsonl \
+  --model outputs/qwen25vl_lora_stcray \
+  --test-file data/stcray_vqa_val.jsonl \
   --output results/eval_vqa_results.json
 
 # Operational benchmarks
 python evaluation/eval_operational.py \
-  --model outputs/qwen25vl_lora_phase1 \
-  --test-file data/opixray_vqa_test.jsonl \
+  --model outputs/qwen25vl_lora_stcray \
+  --test-file data/stcray_vqa_val.jsonl \
   --batch-sizes 1,2,4,8,16,32 \
   --output results/operational_benchmarks.json
 ```
