@@ -52,6 +52,29 @@ class LLMVQAGenerator:
                 api_key=api_key or os.getenv("ANTHROPIC_API_KEY")
             )
             print(f"Initialized {self.provider} with model: {model}")
+        elif "gemini" in model.lower():
+            # Google Gemini API
+            self.provider = "gemini"
+            import google.generativeai as genai
+            
+            api_key_value = api_key or os.getenv("GOOGLE_API_KEY")
+            if not api_key_value:
+                raise ValueError("GOOGLE_API_KEY environment variable or api_key parameter required for Gemini")
+            
+            genai.configure(api_key=api_key_value)
+            
+            # Configure custom endpoint if provided (for AI Gateway)
+            if api_base:
+                print(f"Initialized Gemini with model: {model}")
+                print(f"Custom endpoint: {api_base}")
+                print(f"Note: Gemini SDK may use default endpoint. For custom endpoints, ensure API key is configured for that endpoint.")
+            else:
+                print(f"Initialized Gemini with model: {model}")
+            
+            self.client = genai.GenerativeModel(
+                model_name=model,
+                generation_config={"temperature": 0.7, "max_output_tokens": 2000}
+            )
         else:
             # OpenAI-compatible API (includes GPT, vLLM with Qwen, etc.)
             self.provider = "openai"
@@ -223,6 +246,21 @@ CRITICAL:
         )
         return response.choices[0].message.content
     
+    def _call_gemini(self, image_data: str, prompt: str) -> str:
+        """Call Google Gemini API."""
+        from PIL import Image
+        import io
+        import base64
+        
+        # Decode base64 image to PIL Image
+        image_bytes = base64.b64decode(image_data)
+        image = Image.open(io.BytesIO(image_bytes))
+        
+        # Generate content with image and text
+        response = self.client.generate_content([prompt, image])
+        
+        return response.text
+    
     def _call_local_qwen(self, image_path: str, prompt: str) -> str:
         """Call local Qwen2.5-VL model."""
         from PIL import Image
@@ -369,6 +407,8 @@ CRITICAL:
                     
                     if self.provider == "anthropic":
                         response = self._call_claude(image_data, prompt)
+                    elif self.provider == "gemini":
+                        response = self._call_gemini(image_data, prompt)
                     else:
                         response = self._call_openai(image_data, prompt)
                 

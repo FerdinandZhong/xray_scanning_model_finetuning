@@ -498,6 +498,7 @@ For issues and questions:
 
 ### Guides & References
 - **[`docs/QWEN_VL_VLLM_GUIDE.md`](docs/QWEN_VL_VLLM_GUIDE.md)** - ⭐ Qwen2.5-VL + vLLM guide (FREE, RECOMMENDED)
+- **[`docs/GEMINI_VQA_GENERATION.md`](docs/GEMINI_VQA_GENERATION.md)** - Gemini 2.0 Flash VQA generation (CHEAPEST CLOUD, ~$9)
 - [`docs/AI_AGENT_VQA_GENERATION.md`](docs/AI_AGENT_VQA_GENERATION.md) - Vision LLM-based VQA generation (Claude/GPT-4V)
 - [`docs/TEXT_LLM_VQA_GENERATION.md`](docs/TEXT_LLM_VQA_GENERATION.md) - Text LLM-based VQA generation (Qwen2.5-3B)
 - [`docs/DATASET_RECOMMENDATIONS.md`](docs/DATASET_RECOMMENDATIONS.md) - Dataset analysis and recommendations
