@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  xray-vqa-api:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+    image: xray-vqa-inference:latest
+    container_name: xray-vqa-api
+    
+    # GPU configuration
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 2  # Adjust based on tensor_parallel_size
+              capabilities: [gpu]
+    
+    # Environment variables
+    environment:
+      - CUDA_VISIBLE_DEVICES=0,1
+      - TENSOR_PARALLEL_SIZE=2
+      - MAX_MODEL_LEN=2048
+      - GPU_MEMORY_UTILIZATION=0.9
+    
+    # Volumes
+    volumes:
+      - ../outputs/qwen25vl_stcray_lora:/models/qwen25vl_stcray_lora:ro
+      - ./logs:/app/logs
+    
+    # Ports
+    ports:
+      - "8080:8080"
+    
+    # Restart policy
+    restart: unless-stopped
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # Logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+
+  # Optional: Prometheus for monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: xray-vqa-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    restart: unless-stopped
+
+  # Optional: Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: xray-vqa-grafana
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards:ro
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data:
+  grafana-data:
+
+networks:
+  default:
+    name: xray-vqa-network

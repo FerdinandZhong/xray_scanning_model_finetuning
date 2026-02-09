@@ -1,0 +1,27 @@
+cluster_name: qwen-vl-ray
+max_workers: 4
+upscaling_speed: 1.0
+docker:
+  image: ""  # fill if using custom image
+  container_name: ""
+provider:
+  type: local
+auth:
+  ssh_user: ubuntu
+available_node_types:
+  ray.head.default:
+    min_workers: 0
+    max_workers: 0
+    resources: {"CPU": 8}
+  ray.worker.default:
+    min_workers: 0
+    max_workers: 4
+    resources: {"CPU": 8, "GPU": 1}
+head_node: {}
+worker_nodes: {}
+head_start_ray_commands:
+  - ray stop
+  - ulimit -n 65536; ray start --head --port=6379 --dashboard-host=0.0.0.0
+worker_start_ray_commands:
+  - ray stop
+  - ulimit -n 65536; ray start --address=$RAY_HEAD_IP:6379

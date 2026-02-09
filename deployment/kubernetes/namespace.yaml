@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: customs-ai
+  labels:
+    name: customs-ai
+    environment: production

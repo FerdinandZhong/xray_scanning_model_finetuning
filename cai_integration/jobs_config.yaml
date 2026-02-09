@@ -1,0 +1,87 @@
+# X-ray VQA Fine-tuning Jobs Configuration
+#
+# This configuration defines the job sequence for X-ray VQA fine-tuning on CAI:
+# 1. setup_environment: Create Python venv and install dependencies (PyTorch, Transformers, etc.)
+# 2. download_dataset: Download STCray dataset from HuggingFace
+# 3. generate_vqa: Generate VQA pairs using external Qwen2.5-VL vLLM server
+# 4. finetune_model: Fine-tune Qwen2.5-VL-7B with LoRA on VQA dataset
+#
+# Note on Script Entry Points:
+# - All scripts must be file paths relative to project root (e.g., "cai_integration/script.py")
+# - CAI API does not support inline scripts or command prefixes
+#
+# Environment Variables:
+# - FORCE_REINSTALL: Set to "true" to force full environment reinstall (default: "false")
+# - VLLM_API_BASE: External vLLM server endpoint (e.g., "http://your-server:8000/v1")
+# - RESUME_FROM_CHECKPOINT: Set to checkpoint path to resume training (default: "")
+#
+# Job Dependencies (handled automatically by CAI):
+# - setup_environment (root) → download_dataset → generate_vqa → finetune_model
+# - When parent job succeeds, child jobs auto-trigger automatically
+# - We only trigger the root job via trigger_jobs.py
+
+jobs:
+  # Job 1: Setup Python Environment (ROOT JOB)
+  # Set FORCE_REINSTALL=true to force full reinstall even if venv exists
+  setup_environment:
+    name: "Setup Python Environment"
+    description: "Create Python venv and install dependencies (PyTorch, Transformers, PEFT, etc.)"
+    script: "cai_integration/setup_environment.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 16
+    timeout: 3600  # 1 hour for pip installs
+    parent_job_key: null
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+    environment:
+      FORCE_REINSTALL: "false"
+
+  # Job 2: Download STCray Dataset
+  # Downloads ~46k X-ray images with annotations from HuggingFace
+  download_dataset:
+    name: "Download STCray Dataset"
+    description: "Download STCray dataset from HuggingFace (46k images with 21 threat categories)"
+    script: "cai_integration/download_dataset.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 8
+    timeout: 3600  # 1 hour for download
+    parent_job_key: "setup_environment"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+
+  # Job 3: Generate VQA Dataset
+  # Uses external Qwen2.5-VL vLLM server to generate VQA pairs
+  # IMPORTANT: Configure VLLM_API_BASE to point to your vLLM server
+  generate_vqa:
+    name: "Generate VQA Dataset"
+    description: "Generate VQA pairs using external Qwen2.5-VL vLLM server (~138k pairs)"
+    script: "cai_integration/generate_vqa.py"
+    kernel: "python3"
+    cpu: 8
+    memory: 16
+    gpu: 0  # CPU only, calls external vLLM
+    timeout: 18000  # 5 hours
+    parent_job_key: "download_dataset"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+    environment:
+      VLLM_API_BASE: "http://your-vllm-server:8000/v1"  # CONFIGURE THIS!
+      MODEL_NAME: "Qwen/Qwen2.5-VL-7B-Instruct"
+      SAMPLES_PER_IMAGE: "3"
+
+  # Job 4: Fine-tune Model
+  # Fine-tunes Qwen2.5-VL-7B with LoRA on generated VQA dataset
+  # Set RESUME_FROM_CHECKPOINT to resume from a specific checkpoint
+  finetune_model:
+    name: "Fine-tune Qwen2.5-VL"
+    description: "Fine-tune Qwen2.5-VL-7B with LoRA on VQA dataset (multi-GPU, checkpointing enabled)"
+    script: "cai_integration/finetune_model.py"
+    kernel: "python3"
+    cpu: 16
+    memory: 64
+    gpu: 2  # Multi-GPU training
+    timeout: 43200  # 12 hours
+    parent_job_key: "generate_vqa"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5"
+    environment:
+      RESUME_FROM_CHECKPOINT: ""  # Set to checkpoint path to resume (e.g., "/home/cdsw/outputs/qwen25vl_stcray_lora/checkpoint-2000")
+      CONFIG_FILE: "cai_integration/config/cai_train_config.yaml"

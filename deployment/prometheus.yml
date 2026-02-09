@@ -1,0 +1,31 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'xray-vqa-cluster'
+    environment: 'production'
+
+# Scrape configurations
+scrape_configs:
+  # API server metrics
+  - job_name: 'xray-vqa-api'
+    static_configs:
+      - targets: ['xray-vqa-api:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+  
+  # GPU metrics (requires DCGM exporter)
+  - job_name: 'gpu-metrics'
+    static_configs:
+      - targets: ['dcgm-exporter:9400']
+    scrape_interval: 10s
+  
+  # Node exporter (system metrics)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 15s
+
+# Alert rules
+rule_files:
+  - '/etc/prometheus/alerts/*.yml'

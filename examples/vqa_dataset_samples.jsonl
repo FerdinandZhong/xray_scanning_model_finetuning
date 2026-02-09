@@ -1,0 +1,130 @@
+{
+  "image_path": "data/opixray/images/P00001.jpg",
+  "question": "What items are visible in this X-ray scan?",
+  "answer": "Detected items: a folding knife.",
+  "metadata": {
+    "image_id": 1,
+    "num_annotations": 1,
+    "categories": ["Folding_Knife"],
+    "has_occlusion": false,
+    "question_type": "general",
+    "bboxes": [[245, 312, 89, 156]]
+  }
+}
+{
+  "image_path": "data/opixray/images/P00002.jpg",
+  "question": "What items are visible in this X-ray scan?",
+  "answer": "Detected items: a folding knife at center-left, partially concealed.",
+  "metadata": {
+    "image_id": 2,
+    "num_annotations": 1,
+    "categories": ["Folding_Knife"],
+    "has_occlusion": true,
+    "question_type": "general",
+    "bboxes": [[189, 267, 102, 178]]
+  }
+}
+{
+  "image_path": "data/opixray/images/P00003.jpg",
+  "question": "Is there a scissors in this scan?",
+  "answer": "Yes, a scissors is detected at upper-right.",
+  "metadata": {
+    "image_id": 3,
+    "num_annotations": 1,
+    "categories": ["Scissor"],
+    "has_occlusion": false,
+    "question_type": "specific",
+    "bboxes": [[523, 145, 67, 134]]
+  }
+}
+{
+  "image_path": "data/opixray/images/P00004.jpg",
+  "question": "Is there a straight knife in this scan?",
+  "answer": "No, there is no straight knife in this scan.",
+  "metadata": {
+    "image_id": 4,
+    "num_annotations": 0,
+    "categories": [],
+    "has_occlusion": false,
+    "question_type": "specific",
+    "bboxes": []
+  }
+}
+{
+  "image_path": "data/opixray/images/P00005.jpg",
+  "question": "List all items detected in this scan with their locations.",
+  "answer": "Items detected: Folding knife in center-left quadrant, Scissors in upper-right.",
+  "metadata": {
+    "image_id": 5,
+    "num_annotations": 2,
+    "categories": ["Folding_Knife", "Scissor"],
+    "has_occlusion": false,
+    "question_type": "location",
+    "bboxes": [[198, 289, 95, 167], [512, 123, 71, 142]]
+  }
+}
+{
+  "image_path": "data/opixray/images/P00006.jpg",
+  "question": "Are there any concealed or partially visible items?",
+  "answer": "Yes, partially concealed items detected: utility knife at center.",
+  "metadata": {
+    "image_id": 6,
+    "num_annotations": 1,
+    "categories": ["Utility_Knife"],
+    "has_occlusion": true,
+    "question_type": "occlusion",
+    "bboxes": [[312, 267, 78, 145]]
+  }
+}
+{
+  "image_path": "data/opixray/images/P00007.jpg",
+  "question": "Are there any concealed or partially visible items?",
+  "answer": "No, all items are clearly visible without concealment.",
+  "metadata": {
+    "image_id": 7,
+    "num_annotations": 1,
+    "categories": ["Scissor"],
+    "has_occlusion": false,
+    "question_type": "occlusion",
+    "bboxes": [[401, 234, 82, 156]]
+  }
+}
+{
+  "image_path": "data/opixray/images/P00008.jpg",
+  "question": "Provide a detailed description of all items in this X-ray scan.",
+  "answer": "Detected 3 item(s): folding knife at center-left (partially concealed), scissors at upper-right, utility knife at lower section.",
+  "metadata": {
+    "image_id": 8,
+    "num_annotations": 3,
+    "categories": ["Folding_Knife", "Scissor", "Utility_Knife"],
+    "has_occlusion": true,
+    "question_type": "detailed",
+    "bboxes": [[187, 298, 91, 163], [498, 134, 68, 147], [356, 478, 73, 139]]
+  }
+}
+{
+  "image_path": "data/opixray/images/P00009.jpg",
+  "question": "What items are visible in this X-ray scan?",
+  "answer": "No prohibited items detected in this scan.",
+  "metadata": {
+    "image_id": 9,
+    "num_annotations": 0,
+    "categories": [],
+    "has_occlusion": false,
+    "question_type": "general",
+    "bboxes": []
+  }
+}
+{
+  "image_path": "data/opixray/images/P00010.jpg",
+  "question": "Does this X-ray image contain a multi-tool knife?",
+  "answer": "Yes, a multi-tool knife is detected at center.",
+  "metadata": {
+    "image_id": 10,
+    "num_annotations": 1,
+    "categories": ["Multi-tool_Knife"],
+    "has_occlusion": false,
+    "question_type": "specific",
+    "bboxes": [[289, 312, 87, 152]]
+  }
+}
