@@ -7,9 +7,8 @@ pillow>=10.0.0
 tqdm>=4.65.0
 
 # LLM API clients
-google-generativeai>=0.3.0  # Gemini 2.0 Flash (RECOMMENDED for local)
+openai>=1.12.0              # Gemini via OpenAI-compatible endpoint (RECOMMENDED)
 anthropic>=0.18.0           # Claude (optional, expensive)
-openai>=1.12.0              # GPT-4V or OpenAI-compatible vLLM (optional)
 
 # Optional: For text-only LLM generation (if you want to use local models)
 # torch>=2.1.0

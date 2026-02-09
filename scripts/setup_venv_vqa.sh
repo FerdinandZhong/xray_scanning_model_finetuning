@@ -84,22 +84,16 @@ except ImportError:
     print("✗ Pillow not found")
 
 try:
-    import google.generativeai as genai
-    print(f"✓ google-generativeai installed")
+    import openai
+    print(f"✓ openai: {openai.__version__} (for Gemini via OpenAI-compatible endpoint)")
 except ImportError:
-    print("✗ google-generativeai not found")
+    print("✗ openai not found")
 
 try:
     import anthropic
-    print(f"✓ anthropic: {anthropic.__version__}")
+    print(f"✓ anthropic: {anthropic.__version__} (optional)")
 except ImportError:
     print("⚠ anthropic not installed (optional)")
-
-try:
-    import openai
-    print(f"✓ openai: {openai.__version__}")
-except ImportError:
-    print("⚠ openai not installed (optional)")
 
 print("\n✓ Core VQA generation packages verified")
 PYTHON_VERIFY
@@ -115,10 +109,12 @@ echo "To activate it in the future:"
 echo "  source $VENV_DIR/bin/activate"
 echo ""
 echo "Next steps:"
-echo "  1. Set API key:"
-echo "     export GOOGLE_API_KEY='your-api-key'"
+echo "  1. Set API key (for Gemini via OpenAI-compatible endpoint):"
+echo "     export API_KEY='your-api-key'"
+echo "   or:"
+echo "     export OPENAI_API_KEY='your-api-key'"
 echo ""
-echo "  2. Test Gemini API:"
+echo "  2. Test API connection:"
 echo "     ./scripts/test_gemini_api.sh"
 echo ""
 echo "  3. Download dataset:"

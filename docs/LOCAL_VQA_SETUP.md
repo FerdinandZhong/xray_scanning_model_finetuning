@@ -26,20 +26,19 @@ This setup is optimized for **VQA generation only** (not training). It installs 
 ### 2. Configure API Key
 
 ```bash
-# For Gemini (RECOMMENDED - cheapest at ~$9)
-export GOOGLE_API_KEY="your-google-api-key"
+# For Gemini via OpenAI-compatible endpoint (RECOMMENDED - cheapest at ~$9)
+export API_KEY="your-api-key"
+# Or use OPENAI_API_KEY if you prefer
+export OPENAI_API_KEY="your-api-key"
 
 # Or for Claude (expensive, ~$900)
 export ANTHROPIC_API_KEY="your-anthropic-key"
-
-# Or for OpenAI/GPT-4V (expensive, ~$100)
-export OPENAI_API_KEY="your-openai-key"
 ```
 
 Make it persistent:
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
-echo 'export GOOGLE_API_KEY="your-key"' >> ~/.bashrc
+echo 'export API_KEY="your-key"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -75,13 +74,12 @@ python data/download_stcray.py --output-dir data/stcray
 
 ### Minimal Setup (`requirements_vqa.txt`)
 
-**Core packages** (~200MB):
+**Core packages** (~150MB):
 - `datasets` - HuggingFace datasets for STCray
 - `pillow` - Image processing
 - `tqdm` - Progress bars
-- `google-generativeai` - Gemini API (RECOMMENDED)
+- `openai` - OpenAI-compatible client (for Gemini, GPT-4V, vLLM)
 - `anthropic` - Claude API (optional)
-- `openai` - GPT-4V API (optional)
 - `pyyaml` - Config files
 
 **NOT included** (saves ~5GB):
@@ -106,7 +104,7 @@ Use this for training in CAI or on GPU workstation.
 
 | Feature | Minimal (VQA only) | Full (Training) |
 |---------|-------------------|-----------------|
-| **Disk Space** | ~200MB | ~5GB+ |
+| **Disk Space** | ~150MB | ~5GB+ |
 | **Install Time** | 1-2 minutes | 10-20 minutes |
 | **Use Case** | VQA generation | Training + VQA |
 | **GPU Required** | No | Yes (for training) |
@@ -114,16 +112,17 @@ Use this for training in CAI or on GPU workstation.
 
 ## VQA Generation Options
 
-### Option 1: Gemini 2.0 Flash (RECOMMENDED)
+### Option 1: Gemini 2.0 Flash via OpenAI-compatible endpoint (RECOMMENDED)
 
 **Best for local laptop:**
 - Cost: ~$9 for full dataset
 - Quality: Good (vision-capable)
 - Speed: 1-2 hours
 - Requirements: API key only
+- Uses: OpenAI-compatible API endpoint
 
 ```bash
-export GOOGLE_API_KEY="your-key"
+export API_KEY="your-key"
 ./scripts/generate_vqa_gemini.sh
 ```
 
@@ -189,7 +188,7 @@ See: [`docs/QWEN_VL_VLLM_GUIDE.md`](QWEN_VL_VLLM_GUIDE.md)
 source .venv_vqa/bin/activate
 
 # 3. Set API key (every session or add to ~/.bashrc)
-export GOOGLE_API_KEY="your-key"
+export API_KEY="your-key"
 
 # 4. Download dataset (one-time, ~5GB)
 python data/download_stcray.py --output-dir data/stcray
@@ -230,29 +229,30 @@ huggingface-cli upload \
 
 **Problem:** Even minimal setup uses too much space
 
-**Solution:** Install only Gemini SDK
+**Solution:** Install only essential packages
 ```bash
 python3 -m venv .venv_vqa
 source .venv_vqa/bin/activate
-pip install google-generativeai pillow datasets tqdm pyyaml
+pip install openai pillow datasets tqdm pyyaml
 ```
 
-This is ~100MB instead of 200MB.
+This is ~100MB instead of 150MB.
 
 ### Issue: API Key Not Working
 
-**Problem:** `GOOGLE_API_KEY` not recognized
+**Problem:** `API_KEY` or `OPENAI_API_KEY` not recognized
 
 **Solution:**
 ```bash
 # Check if set
-echo $GOOGLE_API_KEY
+echo $API_KEY
+echo $OPENAI_API_KEY
 
 # Set temporarily
-export GOOGLE_API_KEY="your-key"
+export API_KEY="your-key"
 
 # Set permanently
-echo 'export GOOGLE_API_KEY="your-key"' >> ~/.bashrc
+echo 'export API_KEY="your-key"' >> ~/.bashrc
 source ~/.bashrc
 ```
 

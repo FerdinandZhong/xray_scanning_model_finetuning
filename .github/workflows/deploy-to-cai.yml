@@ -115,7 +115,7 @@ jobs:
           echo "**Repository**: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -z "${{ github.event.inputs.vllm_endpoint }}" ]; then
-            echo "⚠️ **Warning**: vLLM endpoint not provided - jobs will not be created" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Warning**: vLLM endpoint not provided - jobs will not be triggered" >> $GITHUB_STEP_SUMMARY
           fi
 
   create-jobs:

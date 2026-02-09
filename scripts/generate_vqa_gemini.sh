@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Generate VQA dataset using Gemini 2.0 Flash via Cloudera AI Gateway
+# Generate VQA dataset using Gemini 2.0 Flash via OpenAI-compatible endpoint
 # CHEAP + Good Quality (vision-capable)
 
 echo "=========================================="
 echo "VQA Generation with Gemini 2.0 Flash"
 echo "=========================================="
 echo ""
-echo "This uses Gemini 2.0 Flash via Cloudera AI Gateway."
+echo "This uses Gemini 2.0 Flash via OpenAI-compatible AI Gateway."
 echo "Cost: Very low (~\$0.0001-0.0003 per image)"
 echo "Quality: Good (vision-capable model)"
 echo "Time: ~1-2 hours for full dataset"
@@ -17,14 +17,17 @@ echo ""
 # Configuration
 MODEL="${MODEL:-gemini-2.0-flash-exp}"
 SAMPLES_PER_IMAGE="${SAMPLES_PER_IMAGE:-3}"
-API_BASE="${API_BASE:-https://ai-gateway.dev.cloudops.cloudera.com}"
+API_BASE="${API_BASE:-https://ai-gateway.dev.cloudops.cloudera.com/v1}"
 
 # Check if API key is set
-if [ -z "${GOOGLE_API_KEY:-}" ]; then
-    echo "✗ Error: GOOGLE_API_KEY environment variable not set"
+if [ -z "${API_KEY:-}" ]; then
+    echo "✗ Error: API_KEY environment variable not set"
     echo ""
     echo "Please set your API key:"
-    echo "  export GOOGLE_API_KEY='your-api-key'"
+    echo "  export API_KEY='your-api-key'"
+    echo ""
+    echo "Or use OPENAI_API_KEY if you prefer:"
+    echo "  export OPENAI_API_KEY='your-api-key'"
     exit 1
 fi
 
@@ -44,6 +47,7 @@ echo "Configuration:"
 echo "  Model: $MODEL"
 echo "  API Base: $API_BASE"
 echo "  Samples per image: $SAMPLES_PER_IMAGE"
+echo "  OpenAI-compatible: Yes"
 echo ""
 
 # Estimate cost (very rough)
@@ -75,6 +79,11 @@ fi
 echo ""
 echo "Step 1: Test with 10 images"
 echo "============================"
+
+# Set environment for OpenAI-compatible endpoint
+export OPENAI_API_BASE="$API_BASE"
+export OPENAI_API_KEY="${API_KEY:-${OPENAI_API_KEY:-}}"
+
 python data/llm_vqa_generator.py \
   --annotations data/stcray/train/annotations.json \
   --images-dir data/stcray/train/images \
@@ -94,43 +103,43 @@ if [ "$confirm_full" != "yes" ]; then
     exit 0
 fi
 
-echo ""
-echo "Step 2: Generate training VQA dataset"
-echo "======================================"
-python data/llm_vqa_generator.py \
-  --annotations data/stcray/train/annotations.json \
-  --images-dir data/stcray/train/images \
-  --output data/stcray_vqa_train.jsonl \
-  --model "$MODEL" \
-  --samples-per-image "$SAMPLES_PER_IMAGE" \
-  --api-base "$API_BASE" \
-  --rate-limit-delay 0.2 \
-  --batch-save 100
+# echo ""
+# echo "Step 2: Generate training VQA dataset"
+# echo "======================================"
+# python data/llm_vqa_generator.py \
+#   --annotations data/stcray/train/annotations.json \
+#   --images-dir data/stcray/train/images \
+#   --output data/stcray_vqa_train.jsonl \
+#   --model "$MODEL" \
+#   --samples-per-image "$SAMPLES_PER_IMAGE" \
+#   --api-base "$API_BASE" \
+#   --rate-limit-delay 0.2 \
+#   --batch-save 100
 
-echo ""
-echo "Step 3: Generate validation VQA dataset"
-echo "========================================"
-python data/llm_vqa_generator.py \
-  --annotations data/stcray/test/annotations.json \
-  --images-dir data/stcray/test/images \
-  --output data/stcray_vqa_val.jsonl \
-  --model "$MODEL" \
-  --samples-per-image "$SAMPLES_PER_IMAGE" \
-  --api-base "$API_BASE" \
-  --rate-limit-delay 0.2 \
-  --batch-save 100
+# echo ""
+# echo "Step 3: Generate validation VQA dataset"
+# echo "========================================"
+# python data/llm_vqa_generator.py \
+#   --annotations data/stcray/test/annotations.json \
+#   --images-dir data/stcray/test/images \
+#   --output data/stcray_vqa_val.jsonl \
+#   --model "$MODEL" \
+#   --samples-per-image "$SAMPLES_PER_IMAGE" \
+#   --api-base "$API_BASE" \
+#   --rate-limit-delay 0.2 \
+#   --batch-save 100
 
-echo ""
-echo "=========================================="
-echo "VQA Generation Complete!"
-echo "=========================================="
-echo ""
-echo "Files created:"
-echo "  - data/stcray_vqa_train.jsonl (~90k pairs)"
-echo "  - data/stcray_vqa_val.jsonl (~48k pairs)"
-echo ""
-echo "Cost: ~\$$TOTAL_COST (very cheap with Gemini Flash)"
-echo "Quality: Good (vision-capable model)"
-echo ""
-echo "Next step: Start training"
-echo "  python training/train_local.py --config configs/train_stcray.yaml"
+# echo ""
+# echo "=========================================="
+# echo "VQA Generation Complete!"
+# echo "=========================================="
+# echo ""
+# echo "Files created:"
+# echo "  - data/stcray_vqa_train.jsonl (~90k pairs)"
+# echo "  - data/stcray_vqa_val.jsonl (~48k pairs)"
+# echo ""
+# echo "Cost: ~\$$TOTAL_COST (very cheap with Gemini Flash)"
+# echo "Quality: Good (vision-capable model)"
+# echo ""
+# echo "Next step: Start training"
+# echo "  python training/train_local.py --config configs/train_stcray.yaml"

@@ -2,7 +2,7 @@
 
 ## Overview
 
-Generate VQA pairs locally using Google's Gemini 2.0 Flash model via Cloudera AI Gateway. This is the most cost-effective cloud-based option while maintaining good quality vision understanding.
+Generate VQA pairs locally using Google's Gemini 2.0 Flash model via OpenAI-compatible endpoint at Cloudera AI Gateway. This is the most cost-effective cloud-based option while maintaining good quality vision understanding.
 
 **Key Benefits:**
 - Very low cost (~$9 for full dataset)
@@ -10,6 +10,7 @@ Generate VQA pairs locally using Google's Gemini 2.0 Flash model via Cloudera AI
 - Fast generation (1-2 hours total)
 - Good quality output
 - Runs locally on your laptop
+- Uses standard OpenAI-compatible API (no special SDK needed)
 
 ## Prerequisites
 
@@ -48,22 +49,25 @@ Generate VQA pairs locally using Google's Gemini 2.0 Flash model via Cloudera AI
 ### 1. Install Dependencies
 
 ```bash
-# Activate virtual environment
-source .venv/bin/activate
+# Use minimal VQA setup (recommended)
+./scripts/setup_venv_vqa.sh
+source .venv_vqa/bin/activate
 
-# Install Gemini SDK
-pip install google-generativeai>=0.3.0
+# Or install manually
+pip install openai>=1.12.0 pillow datasets tqdm pyyaml
 ```
 
 ### 2. Set API Key
 
 ```bash
-export GOOGLE_API_KEY="your-api-key-here"
+export API_KEY="your-api-key-here"
+# Or use OPENAI_API_KEY if you prefer
+export OPENAI_API_KEY="your-api-key-here"
 ```
 
 To make it persistent across sessions, add to `~/.bashrc` or `~/.zshrc`:
 ```bash
-echo 'export GOOGLE_API_KEY="your-api-key-here"' >> ~/.bashrc
+echo 'export API_KEY="your-api-key-here"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -81,7 +85,7 @@ This downloads ~46k X-ray images with annotations (~5GB).
 
 ```bash
 # Set API key
-export GOOGLE_API_KEY="your-api-key"
+export API_KEY="your-api-key"
 
 # Run generation script
 ./scripts/generate_vqa_gemini.sh
@@ -101,19 +105,24 @@ The script will:
 ```bash
 MODEL=gemini-2.0-flash-exp \
 SAMPLES_PER_IMAGE=5 \
-API_BASE=https://ai-gateway.dev.cloudops.cloudera.com \
+API_BASE=https://ai-gateway.dev.cloudops.cloudera.com/v1 \
+API_KEY="your-key" \
 ./scripts/generate_vqa_gemini.sh
 ```
 
 **Direct Python call:**
 ```bash
+export API_KEY="your-key"
+export OPENAI_API_BASE="https://ai-gateway.dev.cloudops.cloudera.com/v1"
+export OPENAI_API_KEY="$API_KEY"
+
 python data/llm_vqa_generator.py \
   --annotations data/stcray/train/annotations.json \
   --images-dir data/stcray/train/images \
   --output data/stcray_vqa_train.jsonl \
   --model gemini-2.0-flash-exp \
   --samples-per-image 3 \
-  --api-base https://ai-gateway.dev.cloudops.cloudera.com \
+  --api-base "$OPENAI_API_BASE" \
   --rate-limit-delay 0.2 \
   --batch-save 100
 ```
@@ -203,12 +212,14 @@ Successful: 13487 | Failed: 13 | Checkpoint saved
 
 **Error:**
 ```
-Error: GOOGLE_API_KEY environment variable not set
+Error: API_KEY environment variable not set
 ```
 
 **Solution:**
 ```bash
-export GOOGLE_API_KEY="your-key"
+export API_KEY="your-key"
+# Or
+export OPENAI_API_KEY="your-key"
 ```
 
 ### Issue: Connection Error to AI Gateway
@@ -426,26 +437,36 @@ Total: ~$9.20
 
 ### API Integration
 
-The generator uses Google's `generativeai` SDK:
+The generator uses OpenAI-compatible API with custom base URL:
 
 ```python
-import google.generativeai as genai
+from openai import OpenAI
 
-# Configure API key
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-
-# Create model
-model = genai.GenerativeModel(
-    model_name="gemini-2.0-flash-exp",
-    generation_config={
-        "temperature": 0.7,
-        "max_output_tokens": 2000
-    }
+# Configure client for Gemini via AI Gateway
+client = OpenAI(
+    api_key=os.getenv("API_KEY") or os.getenv("OPENAI_API_KEY"),
+    base_url="https://ai-gateway.dev.cloudops.cloudera.com/v1"
 )
 
-# Generate with image
-response = model.generate_content([prompt, image])
+# Generate with image (using OpenAI chat completion format)
+response = client.chat.completions.create(
+    model="gemini-2.0-flash-exp",
+    messages=[{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}}
+        ]
+    }],
+    max_tokens=2000
+)
 ```
+
+**Benefits of OpenAI-compatible approach:**
+- Standard API format (works with multiple providers)
+- No special SDK needed
+- Same code works for OpenAI, Gemini, vLLM, etc.
+- Easy to switch between providers
 
 ### Rate Limiting
 
