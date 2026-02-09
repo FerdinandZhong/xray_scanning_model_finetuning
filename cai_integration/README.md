@@ -63,6 +63,7 @@ jobs:
       VLLM_API_BASE: "http://your-vllm-server:8000/v1"  # CHANGE THIS
       MODEL_NAME: "Qwen/Qwen2.5-VL-7B-Instruct"
       SAMPLES_PER_IMAGE: "3"
+      API_KEY: ""  # Optional: for OpenAI/Claude/authenticated vLLM
 ```
 
 ### Step 2: Create Jobs
@@ -147,6 +148,7 @@ Connects to external Qwen2.5-VL vLLM server to generate VQA pairs.
 - `VLLM_API_BASE`: vLLM server endpoint (REQUIRED)
 - `MODEL_NAME`: Model name (default: Qwen/Qwen2.5-VL-7B-Instruct)
 - `SAMPLES_PER_IMAGE`: VQA pairs per image (default: 3)
+- `API_KEY`: API key for OpenAI/Claude/authenticated vLLM (optional)
 
 ### Job 4: Fine-tune Model
 
@@ -378,6 +380,7 @@ huggingface-cli upload \
 | `VLLM_API_BASE` | generate_vqa | (none) | vLLM server endpoint (REQUIRED) |
 | `MODEL_NAME` | generate_vqa | `Qwen/Qwen2.5-VL-7B-Instruct` | Model name for VQA |
 | `SAMPLES_PER_IMAGE` | generate_vqa | `3` | VQA pairs per image |
+| `API_KEY` | generate_vqa | (empty) | API key for OpenAI/Claude/authenticated vLLM |
 | `RESUME_FROM_CHECKPOINT` | finetune_model | (empty) | Checkpoint path to resume |
 | `CONFIG_FILE` | finetune_model | `cai_integration/config/cai_train_config.yaml` | Training config |
 

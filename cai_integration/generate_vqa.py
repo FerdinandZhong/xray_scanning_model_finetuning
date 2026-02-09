@@ -36,6 +36,7 @@ def main():
     api_base = os.getenv("VLLM_API_BASE")
     model = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-VL-7B-Instruct")
     samples_per_image = int(os.getenv("SAMPLES_PER_IMAGE", "3"))
+    api_key = os.getenv("API_KEY", "")
     
     if not api_base:
         print("❌ Error: VLLM_API_BASE environment variable not set")
@@ -51,6 +52,7 @@ def main():
     print(f"  vLLM API Base: {api_base}")
     print(f"  Model: {model}")
     print(f"  Samples per image: {samples_per_image}")
+    print(f"  API Key: {'<configured>' if api_key else '<not set>'}")
     print()
     
     # Verify dataset exists
@@ -65,10 +67,15 @@ def main():
     print(f"✓ Dataset verified")
     print()
     
-    # Set OpenAI API environment variables for vLLM
+    # Set OpenAI API environment variables for vLLM/OpenAI/Claude
     env = os.environ.copy()
     env["OPENAI_API_BASE"] = api_base
-    env["OPENAI_API_KEY"] = "EMPTY"  # vLLM doesn't require a real key
+    # Use provided API key or "EMPTY" for public vLLM servers
+    env["OPENAI_API_KEY"] = api_key if api_key else "EMPTY"
+    
+    # Also set for Anthropic if using Claude
+    if api_key:
+        env["ANTHROPIC_API_KEY"] = api_key
     
     # Generate training set
     print("=" * 60)

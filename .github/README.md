@@ -15,6 +15,7 @@ This directory contains GitHub Actions workflows for automating deployment of th
 - `force_reinstall`: Force environment reinstall (default: false)
 - `trigger_jobs`: Automatically trigger pipeline after setup (default: false)
 - `samples_per_image`: VQA samples per image (default: 3)
+- `api_key`: API key for OpenAI/Claude/authenticated vLLM (optional)
 
 **Steps:**
 1. **Validate**: Check configuration files and YAML syntax
@@ -36,7 +37,8 @@ gh workflow run deploy-to-cai.yml \
   -f vllm_endpoint=http://your-server:8000/v1 \
   -f force_reinstall=false \
   -f trigger_jobs=false \
-  -f samples_per_image=3
+  -f samples_per_image=3 \
+  -f api_key=""  # Optional: use for authenticated APIs
 ```
 
 **Required Secrets:**

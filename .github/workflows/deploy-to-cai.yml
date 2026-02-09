@@ -22,6 +22,11 @@ on:
         required: false
         default: '3'
         type: string
+      api_key:
+        description: 'API key for OpenAI/Claude/authenticated vLLM (optional)'
+        required: false
+        default: ''
+        type: string
 
 jobs:
   validate:
@@ -32,7 +37,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate configuration
+      - name: Validate vLLM endpoint
+        run: |
+          echo "🔍 Validating vLLM endpoint..."
+          if [ -z "${{ github.event.inputs.vllm_endpoint }}" ]; then
+            echo "❌ Error: vLLM endpoint is required but not provided"
+            echo "   Please provide a valid vLLM server endpoint (e.g., http://server:8000/v1)"
+            exit 1
+          fi
+          echo "✅ vLLM endpoint provided: ${{ github.event.inputs.vllm_endpoint }}"
+
+      - name: Validate configuration files
         run: |
           echo "🔍 Validating configuration files..."
           # Check required files exist
@@ -95,11 +110,16 @@ jobs:
           echo "**Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
           echo "**Project ID**: ${{ steps.setup.outputs.project_id }}" >> $GITHUB_STEP_SUMMARY
           echo "**Repository**: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -z "${{ github.event.inputs.vllm_endpoint }}" ]; then
+            echo "⚠️ **Warning**: vLLM endpoint not provided - jobs will not be created" >> $GITHUB_STEP_SUMMARY
+          fi
 
   create-jobs:
     needs: setup-project
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    if: github.event.inputs.vllm_endpoint != ''
 
     steps:
       - name: Checkout code
@@ -126,6 +146,7 @@ jobs:
           
           config['jobs']['generate_vqa']['environment']['VLLM_API_BASE'] = '${{ github.event.inputs.vllm_endpoint }}'
           config['jobs']['generate_vqa']['environment']['SAMPLES_PER_IMAGE'] = '${{ github.event.inputs.samples_per_image }}'
+          config['jobs']['generate_vqa']['environment']['API_KEY'] = '${{ github.event.inputs.api_key }}'
           config['jobs']['setup_environment']['environment']['FORCE_REINSTALL'] = 'true' if '${{ github.event.inputs.force_reinstall }}' == 'true' else 'false'
           
           with open('cai_integration/jobs_config.yaml', 'w') as f:
@@ -150,12 +171,13 @@ jobs:
           echo "**vLLM Endpoint**: ${{ github.event.inputs.vllm_endpoint }}" >> $GITHUB_STEP_SUMMARY
           echo "**Force Reinstall**: ${{ github.event.inputs.force_reinstall }}" >> $GITHUB_STEP_SUMMARY
           echo "**Samples per Image**: ${{ github.event.inputs.samples_per_image }}" >> $GITHUB_STEP_SUMMARY
+          echo "**API Key**: ${{ github.event.inputs.api_key && '<configured>' || '<not provided>' }}" >> $GITHUB_STEP_SUMMARY
 
   trigger-pipeline:
     needs: [setup-project, create-jobs]
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.event.inputs.trigger_jobs == 'true'
+    if: github.event.inputs.trigger_jobs == 'true' && github.event.inputs.vllm_endpoint != ''
 
     steps:
       - name: Checkout code
