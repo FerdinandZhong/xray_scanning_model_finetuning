@@ -1,0 +1,20 @@
+# Minimal requirements for VQA generation on local laptop
+# This is a lightweight subset for data generation only (no training)
+
+# Core data processing
+datasets>=2.14.0
+pillow>=10.0.0
+tqdm>=4.65.0
+
+# LLM API clients
+google-generativeai>=0.3.0  # Gemini 2.0 Flash (RECOMMENDED for local)
+anthropic>=0.18.0           # Claude (optional, expensive)
+openai>=1.12.0              # GPT-4V or OpenAI-compatible vLLM (optional)
+
+# Optional: For text-only LLM generation (if you want to use local models)
+# torch>=2.1.0
+# transformers>=4.37.0
+# accelerate>=0.26.0
+
+# Utilities
+pyyaml>=6.0

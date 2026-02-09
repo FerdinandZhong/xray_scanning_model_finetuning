@@ -497,6 +497,7 @@ For issues and questions:
 - [`docs/VQA_GENERATOR_VERIFICATION.md`](docs/VQA_GENERATOR_VERIFICATION.md) - Detailed verification report with usage examples
 
 ### Guides & References
+- **[`docs/LOCAL_VQA_SETUP.md`](docs/LOCAL_VQA_SETUP.md)** - 🚀 Quick setup for local VQA generation (minimal dependencies)
 - **[`docs/QWEN_VL_VLLM_GUIDE.md`](docs/QWEN_VL_VLLM_GUIDE.md)** - ⭐ Qwen2.5-VL + vLLM guide (FREE, RECOMMENDED)
 - **[`docs/GEMINI_VQA_GENERATION.md`](docs/GEMINI_VQA_GENERATION.md)** - Gemini 2.0 Flash VQA generation (CHEAPEST CLOUD, ~$9)
 - [`docs/AI_AGENT_VQA_GENERATION.md`](docs/AI_AGENT_VQA_GENERATION.md) - Vision LLM-based VQA generation (Claude/GPT-4V)
