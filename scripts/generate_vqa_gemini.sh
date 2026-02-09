@@ -125,43 +125,49 @@ if [ "$confirm_full" != "yes" ]; then
     exit 0
 fi
 
-# echo ""
-# echo "Step 2: Generate training VQA dataset"
-# echo "======================================"
-# python data/llm_vqa_generator.py \
-#   --annotations data/stcray/train/annotations.json \
-#   --images-dir data/stcray/train/images \
-#   --output data/stcray_vqa_train.jsonl \
-#   --model "$MODEL" \
-#   --samples-per-image "$SAMPLES_PER_IMAGE" \
-#   --api-base "$API_BASE" \
-#   --rate-limit-delay 0.2 \
-#   --batch-save 100
+echo ""
+echo "Step 2: Generate training VQA dataset"
+echo "======================================"
+if [ -n "$CAFFEINATE_CMD" ]; then
+    echo "🔋 Keeping MacBook awake during generation..."
+fi
+$CAFFEINATE_CMD python data/llm_vqa_generator.py \
+  --annotations data/stcray/train/annotations.json \
+  --images-dir data/stcray/train/images \
+  --output data/stcray_vqa_train.jsonl \
+  --model "$MODEL" \
+  --samples-per-image "$SAMPLES_PER_IMAGE" \
+  --api-base "$API_BASE" \
+  --rate-limit-delay 0.2 \
+  --batch-save 100
 
-# echo ""
-# echo "Step 3: Generate validation VQA dataset"
-# echo "========================================"
-# python data/llm_vqa_generator.py \
-#   --annotations data/stcray/test/annotations.json \
-#   --images-dir data/stcray/test/images \
-#   --output data/stcray_vqa_val.jsonl \
-#   --model "$MODEL" \
-#   --samples-per-image "$SAMPLES_PER_IMAGE" \
-#   --api-base "$API_BASE" \
-#   --rate-limit-delay 0.2 \
-#   --batch-save 100
+echo ""
+echo "Step 3: Generate validation VQA dataset"
+echo "========================================"
+if [ -n "$CAFFEINATE_CMD" ]; then
+    echo "🔋 Keeping MacBook awake during generation..."
+fi
+$CAFFEINATE_CMD python data/llm_vqa_generator.py \
+  --annotations data/stcray/test/annotations.json \
+  --images-dir data/stcray/test/images \
+  --output data/stcray_vqa_val.jsonl \
+  --model "$MODEL" \
+  --samples-per-image "$SAMPLES_PER_IMAGE" \
+  --api-base "$API_BASE" \
+  --rate-limit-delay 0.2 \
+  --batch-save 100
 
-# echo ""
-# echo "=========================================="
-# echo "VQA Generation Complete!"
-# echo "=========================================="
-# echo ""
-# echo "Files created:"
-# echo "  - data/stcray_vqa_train.jsonl (~90k pairs)"
-# echo "  - data/stcray_vqa_val.jsonl (~48k pairs)"
-# echo ""
-# echo "Cost: ~\$$TOTAL_COST (very cheap with Gemini Flash)"
-# echo "Quality: Good (vision-capable model)"
-# echo ""
-# echo "Next step: Start training"
-# echo "  python training/train_local.py --config configs/train_stcray.yaml"
+echo ""
+echo "=========================================="
+echo "VQA Generation Complete!"
+echo "=========================================="
+echo ""
+echo "Files created:"
+echo "  - data/stcray_vqa_train.jsonl (~90k pairs)"
+echo "  - data/stcray_vqa_val.jsonl (~48k pairs)"
+echo ""
+echo "Cost: ~\$$TOTAL_COST (very cheap with Gemini Flash)"
+echo "Quality: Good (vision-capable model)"
+echo ""
+echo "Next step: Start training"
+echo "  python training/train_local.py --config configs/train_stcray.yaml"
