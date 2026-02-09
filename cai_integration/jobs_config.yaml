@@ -67,6 +67,7 @@ jobs:
       VLLM_API_BASE: "http://your-vllm-server:8000/v1"  # CONFIGURE THIS!
       MODEL_NAME: "Qwen/Qwen2.5-VL-7B-Instruct"
       SAMPLES_PER_IMAGE: "3"
+      API_KEY: ""  # Optional: API key for OpenAI/Claude/authenticated vLLM (set in GitHub Actions or leave empty for public vLLM)
 
   # Job 4: Fine-tune Model
   # Fine-tunes Qwen2.5-VL-7B with LoRA on generated VQA dataset

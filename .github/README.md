@@ -11,16 +11,22 @@ This directory contains GitHub Actions workflows for automating deployment of th
 **Trigger:** Manual workflow dispatch
 
 **Parameters:**
-- `vllm_endpoint`: External vLLM server endpoint (required, e.g., `http://server:8000/v1`)
+- `vllm_endpoint`: External vLLM server endpoint (e.g., `http://server:8000/v1`)
+  - **Optional but recommended**: Jobs will be created even if not provided
+  - If not provided: Placeholder used, must configure in CAI before running
+  - If not provided: Automatic triggering will be skipped
 - `force_reinstall`: Force environment reinstall (default: false)
 - `trigger_jobs`: Automatically trigger pipeline after setup (default: false)
+  - Only works if vLLM endpoint is provided
 - `samples_per_image`: VQA samples per image (default: 3)
+- `api_key`: API key for OpenAI/Claude/authenticated vLLM (optional)
 
 **Steps:**
-1. **Validate**: Check configuration files and YAML syntax
+1. **Validate**: Check configuration files and YAML syntax (warns if vLLM endpoint missing)
 2. **Setup Project**: Create/find CAI project and sync from GitHub
-3. **Create Jobs**: Define deployment job pipeline (4 jobs)
-4. **Trigger Pipeline**: Optionally run jobs to start fine-tuning
+3. **Create Jobs**: Always creates 4 CAI jobs (uses placeholder if vLLM endpoint missing)
+4. **Trigger Pipeline**: Only triggers if vLLM endpoint provided AND trigger_jobs=true
+5. **Skip Trigger** (conditional): Shows manual setup instructions if trigger requested but endpoint missing
 
 **Usage:**
 ```bash
@@ -31,12 +37,18 @@ This directory contains GitHub Actions workflows for automating deployment of th
 4. Fill in vLLM endpoint and other options
 5. Click "Run workflow"
 
-# Via GitHub CLI
+# Via GitHub CLI (with vLLM endpoint)
 gh workflow run deploy-to-cai.yml \
   -f vllm_endpoint=http://your-server:8000/v1 \
   -f force_reinstall=false \
   -f trigger_jobs=false \
-  -f samples_per_image=3
+  -f samples_per_image=3 \
+  -f api_key=""  # Optional: use for authenticated APIs
+
+# Or without vLLM endpoint (configure later in CAI)
+gh workflow run deploy-to-cai.yml \
+  -f vllm_endpoint="" \
+  -f trigger_jobs=false
 ```
 
 **Required Secrets:**
