@@ -37,15 +37,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Validate vLLM endpoint
+      - name: Check vLLM endpoint
         run: |
-          echo "🔍 Validating vLLM endpoint..."
+          echo "🔍 Checking vLLM endpoint..."
           if [ -z "${{ github.event.inputs.vllm_endpoint }}" ]; then
-            echo "❌ Error: vLLM endpoint is required but not provided"
-            echo "   Please provide a valid vLLM server endpoint (e.g., http://server:8000/v1)"
-            exit 1
+            echo "⚠️  Warning: vLLM endpoint not provided"
+            echo "   Jobs will be created with placeholder endpoint"
+            echo "   You must configure the endpoint in CAI before running jobs"
+            echo "   Automatic job triggering will be skipped"
+          else
+            echo "✅ vLLM endpoint provided: ${{ github.event.inputs.vllm_endpoint }}"
           fi
-          echo "✅ vLLM endpoint provided: ${{ github.event.inputs.vllm_endpoint }}"
 
       - name: Validate configuration files
         run: |
@@ -119,7 +121,6 @@ jobs:
     needs: setup-project
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    if: github.event.inputs.vllm_endpoint != ''
 
     steps:
       - name: Checkout code
@@ -135,16 +136,25 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests pyyaml
 
-      - name: Update jobs config with vLLM endpoint
+      - name: Update jobs config with parameters
         run: |
-          echo "📝 Updating jobs_config.yaml with vLLM endpoint..."
+          echo "📝 Updating jobs_config.yaml with parameters..."
           python3 << 'PYTHON_SCRIPT'
           import yaml
           
           with open('cai_integration/jobs_config.yaml') as f:
               config = yaml.safe_load(f)
           
-          config['jobs']['generate_vqa']['environment']['VLLM_API_BASE'] = '${{ github.event.inputs.vllm_endpoint }}'
+          # Set vLLM endpoint (use placeholder if not provided)
+          vllm_endpoint = '${{ github.event.inputs.vllm_endpoint }}'
+          if vllm_endpoint:
+              config['jobs']['generate_vqa']['environment']['VLLM_API_BASE'] = vllm_endpoint
+              print(f"✓ vLLM endpoint configured: {vllm_endpoint}")
+          else:
+              config['jobs']['generate_vqa']['environment']['VLLM_API_BASE'] = 'CONFIGURE_IN_CAI_BEFORE_RUNNING'
+              print("⚠ vLLM endpoint not provided - using placeholder")
+              print("  You MUST configure this in CAI before running the generate_vqa job")
+          
           config['jobs']['generate_vqa']['environment']['SAMPLES_PER_IMAGE'] = '${{ github.event.inputs.samples_per_image }}'
           config['jobs']['generate_vqa']['environment']['API_KEY'] = '${{ github.event.inputs.api_key }}'
           config['jobs']['setup_environment']['environment']['FORCE_REINSTALL'] = 'true' if '${{ github.event.inputs.force_reinstall }}' == 'true' else 'false'
@@ -168,7 +178,20 @@ jobs:
         run: |
           echo "## X-ray VQA Setup: Jobs" >> $GITHUB_STEP_SUMMARY
           echo "**Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-          echo "**vLLM Endpoint**: ${{ github.event.inputs.vllm_endpoint }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -z "${{ github.event.inputs.vllm_endpoint }}" ]; then
+            echo "⚠️ **vLLM Endpoint**: Not provided (placeholder used)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Action Required" >> $GITHUB_STEP_SUMMARY
+            echo "Before running the VQA generation job in CAI:" >> $GITHUB_STEP_SUMMARY
+            echo "1. Go to CAI UI → Jobs → generate_vqa" >> $GITHUB_STEP_SUMMARY
+            echo "2. Edit job environment variables" >> $GITHUB_STEP_SUMMARY
+            echo "3. Set VLLM_API_BASE to your actual vLLM server endpoint" >> $GITHUB_STEP_SUMMARY
+            echo "4. Then trigger the job manually" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **vLLM Endpoint**: ${{ github.event.inputs.vllm_endpoint }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Force Reinstall**: ${{ github.event.inputs.force_reinstall }}" >> $GITHUB_STEP_SUMMARY
           echo "**Samples per Image**: ${{ github.event.inputs.samples_per_image }}" >> $GITHUB_STEP_SUMMARY
           echo "**API Key**: ${{ github.event.inputs.api_key && '<configured>' || '<not provided>' }}" >> $GITHUB_STEP_SUMMARY
@@ -177,7 +200,9 @@ jobs:
     needs: [setup-project, create-jobs]
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: github.event.inputs.trigger_jobs == 'true' && github.event.inputs.vllm_endpoint != ''
+    if: |
+      github.event.inputs.trigger_jobs == 'true' && 
+      github.event.inputs.vllm_endpoint != ''
 
     steps:
       - name: Checkout code
@@ -215,3 +240,39 @@ jobs:
           echo "1. Monitor job execution in CAI UI: Jobs > Job Runs" >> $GITHUB_STEP_SUMMARY
           echo "2. Pipeline will take 11-19 hours to complete" >> $GITHUB_STEP_SUMMARY
           echo "3. Check logs for any errors" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Job Execution Order" >> $GITHUB_STEP_SUMMARY
+          echo "- setup_environment (triggered now)" >> $GITHUB_STEP_SUMMARY
+          echo "- download_dataset (auto-triggers after setup)" >> $GITHUB_STEP_SUMMARY
+          echo "- generate_vqa (auto-triggers after download)" >> $GITHUB_STEP_SUMMARY
+          echo "- finetune_model (auto-triggers after VQA generation)" >> $GITHUB_STEP_SUMMARY
+
+  skip-trigger:
+    needs: [setup-project, create-jobs]
+    runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.trigger_jobs == 'true' && 
+      github.event.inputs.vllm_endpoint == ''
+
+    steps:
+      - name: Warning message
+        run: |
+          echo "⚠️ Pipeline trigger skipped - vLLM endpoint not provided"
+          echo ""
+          echo "Jobs have been created but not triggered."
+          echo "To run the pipeline:"
+          echo "1. Configure vLLM_API_BASE in CAI UI"
+          echo "2. Manually trigger the setup_environment job"
+
+      - name: Create summary
+        run: |
+          echo "## Pipeline Trigger Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Reason**: vLLM endpoint not provided" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Manual Steps Required" >> $GITHUB_STEP_SUMMARY
+          echo "1. Go to CAI UI → Jobs → generate_vqa" >> $GITHUB_STEP_SUMMARY
+          echo "2. Edit environment variables" >> $GITHUB_STEP_SUMMARY
+          echo "3. Set VLLM_API_BASE to your vLLM server endpoint" >> $GITHUB_STEP_SUMMARY
+          echo "4. Go to Jobs → setup_environment" >> $GITHUB_STEP_SUMMARY
+          echo "5. Click 'Run' to start the pipeline" >> $GITHUB_STEP_SUMMARY
