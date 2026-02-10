@@ -80,6 +80,14 @@ data/stcray/
 # data/cargoxray/
 # data/cargoxray_yolo/
 
+# Luggage X-ray dataset (downloaded from Roboflow, not tracked)
+data/luggage_xray/
+data/luggage_xray_yolo/
+
+# Summary files (internal)
+*_SUMMARY.md
+VERIFICATION_*.md
+
 # Custom test images
 data/test_xrays/
 

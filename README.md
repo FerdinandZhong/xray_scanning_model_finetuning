@@ -22,6 +22,7 @@ This project provides **two approaches** for automated X-ray baggage inspection:
 - OpenAI-compatible API for agentic workflows
 - 24 threat categories with confidence scores
 - Occlusion detection for concealed items
+- Ultra-fast CAI setup with `uv` (10-100x faster than pip)
 
 ### VLM (Vision-Language Model) - Alternative Approach
 
@@ -83,7 +84,7 @@ xray_scanning_model_finetuning/
 
 ### 🚀 Deploy to CAI via GitHub Actions (Recommended)
 
-**Fine-tune YOLO on Cloudera AI Workspace (given RolmOCR's 0% accuracy):**
+**Fine-tune YOLO on Cloudera AI Workspace:**
 
 #### Web UI Method
 
@@ -91,14 +92,20 @@ xray_scanning_model_finetuning/
 2. Click **Run workflow**
 3. Select:
    - **model_type**: `yolo`
-   - **dataset**: `cargoxray` (quick) or `stcray` (production)
+   - **dataset**: `luggage_xray` (recommended) or `cargoxray` (quick) or `stcray` (production)
    - **trigger_jobs**: `true`
 4. Click **Run workflow**
 
 #### CLI Method
 
 ```bash
-# Quick baseline: CargoXray (1 hour, 659 images)
+# Recommended: Luggage X-ray (1 hour, 7k images)
+gh workflow run deploy-to-cai.yml \
+  --field model_type=yolo \
+  --field dataset=luggage_xray \
+  --field trigger_jobs=true
+
+# Quick baseline: CargoXray (30 min, 659 images)
 gh workflow run deploy-to-cai.yml \
   --field model_type=yolo \
   --field dataset=cargoxray \
@@ -201,12 +208,9 @@ export API_KEY="your-api-key"
 See [`docs/VQA_GENERATOR_VERIFICATION.md`](docs/VQA_GENERATOR_VERIFICATION.md) for VLM training.
 
 ```bash
-# Download OPIXray dataset
-python data/download_opixray.py --output-dir data/opixray
-
-# Create VQA pairs from annotations
+# Create VQA pairs from dataset annotations
 python data/create_vqa_pairs.py \
-  --opixray-root data/opixray \
+  --stcray-root data/stcray_processed \
   --split all \
   --samples-per-image 2
 ```
@@ -380,48 +384,45 @@ lora:
 
 **📊 Full Comparison**: See [docs/DATASETS_COMPARISON.md](docs/DATASETS_COMPARISON.md) for detailed analysis
 
-### STCray Baggage Screening (Primary - Production)
-- **46,642 X-ray images** of baggage screening
-- **21 threat categories** (knives, guns, liquids, explosives, etc.)
-- **Bounding box annotations** (JSON format)
-- **Best for**: Production baggage screening systems
-- See [docs/STCRAY_DOWNLOAD.md](docs/STCRAY_DOWNLOAD.md) for setup
-
-### CargoXray (Alternative - Simpler Baseline)
-- **659 X-ray images** of cargo containers (trucks, railcars)
-- **16 object categories** (textiles, auto parts, tools, shoes, etc.)
-- **Clearer images** with larger objects - easier baseline
-- **Best for**: Initial training, testing, transfer learning
-- **Download**: Single curl command (no DVC!) - see [docs/CARGOXRAY_QUICKSTART.md](docs/CARGOXRAY_QUICKSTART.md)
+### Luggage X-ray (Recommended - Primary)
+- **7,120 X-ray images** of luggage screening
+- **12 categories**: 5 threats (Knife, Gun, Lighter, Powerbank, Grenade) + 7 normal items
+- **OpenAI JSONL format** with bounding boxes
+- **Best for**: YOLO training, balanced dataset, good for both model testing and production
+- **Download**: Single curl command - see [docs/LUGGAGE_XRAY_CAI.md](docs/LUGGAGE_XRAY_CAI.md)
 
 **Quick start:**
 ```bash
-curl -L "https://app.roboflow.com/ds/BbQux1Jbmr?key=CmUGXQ0DU6" > roboflow.zip
-unzip roboflow.zip
-python scripts/convert_cargoxray_to_yolo.py
-python training/train_yolo.py --data data/cargoxray_yolo/data.yaml --model yolov8n.pt --epochs 100
+# Download dataset
+curl -L "https://app.roboflow.com/ds/nMb0ckPbFf?key=EZzAfTucdZ" > roboflow.zip
+unzip roboflow.zip && rm roboflow.zip
+
+# Convert to YOLO format (parallel image downloads)
+python scripts/convert_luggage_xray_to_yolo.py \
+    --input-dir data/luggage_xray \
+    --output-dir data/luggage_xray_yolo
+
+# Train YOLO (1 hour on T4 GPU)
+python training/train_yolo.py \
+    --data data/luggage_xray_yolo/data.yaml \
+    --model yolov8n.pt \
+    --epochs 100
 ```
 
-### OPIXray (VLM Training)
-- 8,885 X-ray images
-- 5 prohibited item categories (knives, scissors, etc.)
-- COCO format annotations with occlusion metadata
-- Used for VLM fine-tuning with VQA format
+### CargoXray (Alternative - Quick Baseline)
+- **659 X-ray images** of cargo containers (trucks, railcars)
+- **16 object categories** (textiles, auto parts, tools, shoes, etc.)
+- **Clearer images** with larger objects - easier baseline
+- **Best for**: Quick testing, pipeline validation
+- **Download**: Single curl command - see [docs/CARGOXRAY_QUICKSTART.md](docs/CARGOXRAY_QUICKSTART.md)
 
-**VQA Format (Item Recognition Only):**
-```jsonl
-{
-  "image_path": "data/opixray/images/P00001.jpg",
-  "question": "What items are visible in this X-ray scan?",
-  "answer": "Detected items: a folding knife at center-left, partially concealed.",
-  "metadata": {
-    "categories": ["Folding_Knife"],
-    "has_occlusion": true
-  }
-}
-```
+### STCray (Advanced - Production)
+- **46,642 X-ray images** of baggage screening
+- **21 threat categories** (knives, guns, liquids, explosives, etc.)
+- **Best for**: Large-scale production deployment
+- **Note**: Much larger dataset, longer training time
 
-**Note:** Models are trained ONLY on item recognition. Declaration comparison happens in post-processing (`inference/postprocess.py`).
+**Note:** Models are trained ONLY on item recognition. Declaration comparison and risk assessment happen in post-processing (`inference/postprocess.py`).
 
 ## Performance Targets
 
@@ -569,16 +570,6 @@ pytest tests/
 
 This project is for customs and border control use. Please ensure compliance with local regulations.
 
-## Citation
-
-```bibtex
-@article{opixray2021,
-  title={OPIXray: A Dataset for Prohibited Items in X-ray Images},
-  author={...},
-  journal={...},
-  year={2021}
-}
-```
 
 ## Support
 

@@ -70,6 +70,16 @@ def main():
         print(f"✓ CargoXray YOLO data verified: {data_yaml}")
         print("  (Using pre-converted YOLO format from Git LFS)")
         print()
+    elif dataset == "luggage_xray":
+        # Luggage X-ray is downloaded and converted by download_luggage_xray.py
+        data_yaml = project_root / "data/luggage_xray_yolo/data.yaml"
+        if not data_yaml.exists():
+            print(f"❌ Error: Luggage X-ray data.yaml not found at {data_yaml}")
+            print("   Run: python cai_integration/download_luggage_xray.py")
+            sys.exit(1)
+        print(f"✓ Luggage X-ray YOLO data verified: {data_yaml}")
+        print("  (7,120 images, 12 categories, medium complexity)")
+        print()
     else:  # stcray
         # STCray needs to be converted to YOLO format
         train_annotations = project_root / "data/stcray_processed/train/annotations.json"
@@ -108,6 +118,14 @@ def main():
         data_yaml_path = "data/cargoxray_yolo/data.yaml"
         print("=" * 60)
         print("Using Pre-Converted CargoXray Data")
+        print("=" * 60)
+        print(f"✓ Data YAML: {data_yaml_path}")
+        print("  (No conversion needed - already in YOLO format)")
+        print()
+    elif dataset == "luggage_xray":
+        data_yaml_path = "data/luggage_xray_yolo/data.yaml"
+        print("=" * 60)
+        print("Using Pre-Converted Luggage X-ray Data")
         print("=" * 60)
         print(f"✓ Data YAML: {data_yaml_path}")
         print("  (No conversion needed - already in YOLO format)")

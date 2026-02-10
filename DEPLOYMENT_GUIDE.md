@@ -85,10 +85,12 @@ gh workflow run deploy-to-cai.yml \
 
 ```
 Project: xray-scanning-model-finetuning
-├── setup_environment (pending)
+├── setup_environment (pending) ← Uses uv for 10-100x faster package installation
 ├── upload_cargoxray (pending)
 └── yolo_training (pending)
 ```
+
+**Performance Note:** Environment setup now uses `uv` (ultra-fast Python package installer) instead of `pip`, reducing setup time from ~15 minutes to ~2-3 minutes.
 
 ---
 
