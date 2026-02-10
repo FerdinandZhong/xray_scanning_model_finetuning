@@ -46,7 +46,7 @@ Each line in the `.jsonl` file is a JSON object with the following structure:
 
 ## Question Types
 
-### 1. General Questions
+### 1. General Questions (Natural Language)
 Ask about all items in the scan.
 
 **Example:**
@@ -231,12 +231,107 @@ python data/create_vqa_pairs.py \
 # - data/opixray_vqa_test.jsonl (~2,600 samples)
 ```
 
+## Structured JSON Output (XGrammar)
+
+Starting with version 2.0, the model supports **structured JSON output** with guaranteed schema compliance using XGrammar guided generation.
+
+### 6. Structured List Questions (JSON Output)
+
+Ask for a structured JSON list of all detected items with confidence scores and locations.
+
+**Example:**
+```json
+{
+  "question": "List all items detected in this X-ray scan in JSON format.",
+  "answer": "{\"items\": [{\"name\": \"folding knife\", \"confidence\": 0.92, \"location\": \"center-left\"}, {\"name\": \"scissors\", \"confidence\": 0.88, \"location\": \"upper-right\"}], \"total_count\": 2, \"has_concealed_items\": false}",
+  "metadata": {
+    "question_type": "structured_list",
+    "categories": ["Folding_Knife", "Scissor"],
+    "bboxes": [[120, 180, 45, 60], [380, 45, 55, 70]]
+  }
+}
+```
+
+**Key differences from natural language:**
+1. Question explicitly requests JSON format
+2. Answer is a valid JSON string (with escaped quotes)
+3. `question_type` is `"structured_list"`
+4. Each item includes:
+   - `name`: Item category (string)
+   - `confidence`: Detection confidence 0.0-1.0 (float)
+   - `location`: Spatial position (string enum)
+5. Top-level fields:
+   - `items`: Array of detected items
+   - `total_count`: Number of items (matches array length)
+   - `has_concealed_items`: Boolean occlusion flag
+
+### JSON Output Schema
+
+All structured outputs follow this schema:
+
+```json
+{
+  "items": [
+    {
+      "name": "knife",
+      "confidence": 0.95,
+      "location": "center"
+    }
+  ],
+  "total_count": 1,
+  "has_concealed_items": false
+}
+```
+
+**Valid `name` values:**
+- `"knife"`, `"folding knife"`, `"straight knife"`, `"utility knife"`, `"multi-tool knife"`
+- `"scissors"`, `"gun"`, `"handgun"`, `"pistol"`, `"firearm"`, `"explosive"`
+- `"blade"`, `"weapon"`, `"prohibited item"`
+
+**Valid `location` values:**
+- `"upper-left"`, `"upper"`, `"upper-right"`
+- `"left"`, `"center"`, `"right"`
+- `"lower-left"`, `"lower"`, `"lower-right"`
+- `"center-left"`, `"center-right"`, `"upper-center"`, `"lower-center"`
+
+**Confidence ranges:**
+- `0.85-0.95`: Clear, unambiguous items
+- `0.70-0.84`: Partially visible or occluded items
+- `0.50-0.69`: Low confidence detections
+
+### Mixed Training Data
+
+For best results, train on a **mix of natural language and structured questions**:
+
+- **70% Natural Language** (general, specific, location, occlusion questions)
+- **30% Structured JSON** (structured_list questions)
+
+This allows the model to:
+1. Handle conversational queries naturally
+2. Generate guaranteed-valid JSON when requested
+3. Include confidence scores and precise locations
+
+**Generate mixed dataset:**
+```bash
+python data/llm_vqa_generator.py \
+  --annotations data/stcray/annotations/stcray_train_processed.json \
+  --images-dir data/stcray/images \
+  --output data/stcray_vqa_mixed.jsonl \
+  --samples-per-image 3 \
+  --structured-ratio 0.3  # 30% JSON, 70% natural
+```
+
+**See also:** [`docs/STRUCTURED_OUTPUT.md`](../docs/STRUCTURED_OUTPUT.md) for full XGrammar documentation.
+
+---
+
 ## Important Notes
 
 ### What's IN the Training Data
 ✅ Item recognition: "What items are visible?"
 ✅ Location information: "Where are items located?"
 ✅ Occlusion detection: "Are items concealed?"
+✅ **NEW:** Structured JSON output with confidence scores
 
 ### What's NOT in the Training Data
 ❌ Declaration comparison: "Does this match the declaration?"

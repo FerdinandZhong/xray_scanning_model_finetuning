@@ -1,10 +1,51 @@
-name: Deploy X-ray VQA to CAI
+name: Deploy X-ray Detection to CAI
 
 on:
   workflow_dispatch:
     inputs:
+      model_type:
+        description: 'Model architecture'
+        required: true
+        default: 'yolo'
+        type: choice
+        options:
+          - yolo
+          - vlm
+      dataset:
+        description: '[YOLO] Dataset to train on'
+        required: false
+        default: 'stcray'
+        type: choice
+        options:
+          - stcray
+          - cargoxray
+      yolo_model:
+        description: '[YOLO] Model variant (yolov8n=fastest, yolov8s=balanced, yolov8m=accurate)'
+        required: false
+        default: 'yolov8n.pt'
+        type: string
+      yolo_epochs:
+        description: '[YOLO] Training epochs'
+        required: false
+        default: '100'
+        type: string
+      export_onnx:
+        description: '[YOLO] Export to ONNX after training'
+        required: false
+        default: false
+        type: boolean
       vllm_endpoint:
-        description: 'External vLLM server endpoint (e.g., http://server:8000/v1) - Optional: can configure in CAI later'
+        description: '[VLM] External vLLM server endpoint (e.g., http://server:8000/v1) - Optional: can configure in CAI later'
+        required: false
+        default: ''
+        type: string
+      samples_per_image:
+        description: '[VLM] VQA samples per image'
+        required: false
+        default: '3'
+        type: string
+      api_key:
+        description: '[VLM] API key for OpenAI/Claude/authenticated vLLM (optional)'
         required: false
         default: ''
         type: string
@@ -18,16 +59,6 @@ on:
         required: false
         default: false
         type: boolean
-      samples_per_image:
-        description: 'VQA samples per image'
-        required: false
-        default: '3'
-        type: string
-      api_key:
-        description: 'API key for OpenAI/Claude/authenticated vLLM (optional)'
-        required: false
-        default: ''
-        type: string
 
 jobs:
   validate:
@@ -37,24 +68,43 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          lfs: true  # Download Git LFS files (datasets)
 
-      - name: Check vLLM endpoint
+      - name: Check model type configuration
         run: |
-          echo "🔍 Checking vLLM endpoint..."
-          if [ -z "${{ github.event.inputs.vllm_endpoint }}" ]; then
-            echo "⚠️  Warning: vLLM endpoint not provided"
-            echo "   Jobs will be created with placeholder endpoint"
-            echo "   You must configure the endpoint in CAI before running jobs"
-            echo "   Automatic job triggering will be skipped"
-          else
-            echo "✅ vLLM endpoint provided: ${{ github.event.inputs.vllm_endpoint }}"
+          echo "🔍 Checking model type: ${{ github.event.inputs.model_type }}"
+          if [ "${{ github.event.inputs.model_type }}" = "yolo" ]; then
+            echo "✅ Using YOLO detection model"
+            echo "   Dataset: ${{ github.event.inputs.dataset }}"
+            echo "   Model: ${{ github.event.inputs.yolo_model }}"
+            echo "   Epochs: ${{ github.event.inputs.yolo_epochs }}"
+            echo "   Export ONNX: ${{ github.event.inputs.export_onnx }}"
+            if [ "${{ github.event.inputs.dataset }}" = "cargoxray" ]; then
+              echo "   🚀 CargoXray: Quick baseline (~30 min)"
+            else
+              echo "   🚀 STCray: Production model (~4 hours)"
+            fi
+          elif [ "${{ github.event.inputs.model_type }}" = "vlm" ]; then
+            echo "✅ Using VLM (Vision-Language Model) approach"
+            if [ -z "${{ github.event.inputs.vllm_endpoint }}" ]; then
+              echo "⚠️  Warning: vLLM endpoint not provided"
+              echo "   Jobs will be created with placeholder endpoint"
+              echo "   You must configure the endpoint in CAI before running jobs"
+            else
+              echo "   vLLM endpoint: ${{ github.event.inputs.vllm_endpoint }}"
+            fi
           fi
 
       - name: Validate configuration files
         run: |
           echo "🔍 Validating configuration files..."
-          # Check required files exist
-          test -f cai_integration/jobs_config.yaml
+          # Check required files exist based on model type
+          if [ "${{ github.event.inputs.model_type }}" = "yolo" ]; then
+            test -f cai_integration/jobs_config_yolo.yaml
+          else
+            test -f cai_integration/jobs_config.yaml
+          fi
           test -f cai_integration/create_jobs.py
           test -f cai_integration/trigger_jobs.py
           echo "✅ Configuration files validated"
@@ -68,7 +118,11 @@ jobs:
         run: |
           echo "🔍 Validating YAML syntax..."
           pip install pyyaml
-          python -c "import yaml; yaml.safe_load(open('cai_integration/jobs_config.yaml'))"
+          if [ "${{ github.event.inputs.model_type }}" = "yolo" ]; then
+            python -c "import yaml; yaml.safe_load(open('cai_integration/jobs_config_yolo.yaml'))"
+          else
+            python -c "import yaml; yaml.safe_load(open('cai_integration/jobs_config.yaml'))"
+          fi
           echo "✅ YAML syntax valid"
 
   setup-project:
@@ -81,6 +135,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          lfs: true  # Download Git LFS files (datasets)
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -115,7 +171,7 @@ jobs:
           echo "**Repository**: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           if [ -z "${{ github.event.inputs.vllm_endpoint }}" ]; then
-            echo "⚠️ **Warning**: vLLM endpoint not provided - jobs will not be created" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ **Warning**: vLLM endpoint not provided - jobs will not be triggered" >> $GITHUB_STEP_SUMMARY
           fi
 
   create-jobs:
@@ -126,6 +182,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          lfs: true  # Download Git LFS files (datasets)
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -139,28 +197,55 @@ jobs:
 
       - name: Update jobs config with parameters
         run: |
-          echo "📝 Updating jobs_config.yaml with parameters..."
+          echo "📝 Updating jobs config with parameters..."
           python3 << 'PYTHON_SCRIPT'
           import yaml
           
-          with open('cai_integration/jobs_config.yaml') as f:
+          model_type = '${{ github.event.inputs.model_type }}'
+          config_file = f'cai_integration/jobs_config{"_yolo" if model_type == "yolo" else ""}.yaml'
+          
+          with open(config_file) as f:
               config = yaml.safe_load(f)
           
-          # Set vLLM endpoint (use placeholder if not provided)
-          vllm_endpoint = '${{ github.event.inputs.vllm_endpoint }}'
-          if vllm_endpoint:
-              config['jobs']['generate_vqa']['environment']['VLLM_API_BASE'] = vllm_endpoint
-              print(f"✓ vLLM endpoint configured: {vllm_endpoint}")
-          else:
-              config['jobs']['generate_vqa']['environment']['VLLM_API_BASE'] = 'CONFIGURE_IN_CAI_BEFORE_RUNNING'
-              print("⚠ vLLM endpoint not provided - using placeholder")
-              print("  You MUST configure this in CAI before running the generate_vqa job")
-          
-          config['jobs']['generate_vqa']['environment']['SAMPLES_PER_IMAGE'] = '${{ github.event.inputs.samples_per_image }}'
-          config['jobs']['generate_vqa']['environment']['API_KEY'] = '${{ github.event.inputs.api_key }}'
+          # Update force_reinstall for all model types
           config['jobs']['setup_environment']['environment']['FORCE_REINSTALL'] = 'true' if '${{ github.event.inputs.force_reinstall }}' == 'true' else 'false'
           
-          with open('cai_integration/jobs_config.yaml', 'w') as f:
+          if model_type == 'yolo':
+              # Configure YOLO-specific parameters
+              dataset = '${{ github.event.inputs.dataset }}'
+              config['jobs']['yolo_training']['environment']['MODEL_NAME'] = '${{ github.event.inputs.yolo_model }}'
+              config['jobs']['yolo_training']['environment']['EPOCHS'] = '${{ github.event.inputs.yolo_epochs }}'
+              config['jobs']['yolo_training']['environment']['EXPORT_ONNX'] = 'true' if '${{ github.event.inputs.export_onnx }}' == 'true' else 'false'
+              config['jobs']['yolo_training']['environment']['DATASET'] = dataset
+              
+              # Adjust timeout for dataset size
+              if dataset == 'cargoxray':
+                  config['jobs']['yolo_training']['timeout'] = 3600  # 1 hour
+                  config['jobs']['download_dataset']['timeout'] = 1800  # 30 min
+              else:  # stcray
+                  config['jobs']['yolo_training']['timeout'] = 14400  # 4 hours
+                  config['jobs']['download_dataset']['timeout'] = 3600  # 1 hour
+              
+              print(f"✓ YOLO configuration:")
+              print(f"  Dataset: {dataset}")
+              print(f"  Model: {config['jobs']['yolo_training']['environment']['MODEL_NAME']}")
+              print(f"  Epochs: {config['jobs']['yolo_training']['environment']['EPOCHS']}")
+              print(f"  Export ONNX: {config['jobs']['yolo_training']['environment']['EXPORT_ONNX']}")
+              print(f"  Timeout: {config['jobs']['yolo_training']['timeout']}s")
+          else:
+              # Configure VLM-specific parameters
+              vllm_endpoint = '${{ github.event.inputs.vllm_endpoint }}'
+              if vllm_endpoint:
+                  config['jobs']['generate_vqa']['environment']['VLLM_API_BASE'] = vllm_endpoint
+                  print(f"✓ vLLM endpoint configured: {vllm_endpoint}")
+              else:
+                  config['jobs']['generate_vqa']['environment']['VLLM_API_BASE'] = 'CONFIGURE_IN_CAI_BEFORE_RUNNING'
+                  print("⚠ vLLM endpoint not provided - using placeholder")
+              
+              config['jobs']['generate_vqa']['environment']['SAMPLES_PER_IMAGE'] = '${{ github.event.inputs.samples_per_image }}'
+              config['jobs']['generate_vqa']['environment']['API_KEY'] = '${{ github.event.inputs.api_key }}'
+          
+          with open(config_file, 'w') as f:
               yaml.dump(config, f, default_flow_style=False)
           PYTHON_SCRIPT
           echo "✅ Configuration updated"
@@ -208,6 +293,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          lfs: true  # Download Git LFS files (datasets)
 
       - name: Set up Python
         uses: actions/setup-python@v4

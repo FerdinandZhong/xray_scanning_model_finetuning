@@ -1,0 +1,107 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+venv_vqa/
+.venv/
+.venv_vqa/
+ENV/
+env/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+
+# HuggingFace cache
+.cache/
+*/.cache/
+
+# Model checkpoints (not tracked in regular git, use LFS if needed)
+models/*/checkpoint-*
+models/*/pytorch_model.bin
+models/*/model.safetensors
+
+# Data directories (extracted files, not RAR archives)
+data/stcray/train/images/
+data/stcray/test/images/
+data/stcray_raw/STCray_TrainSet/
+data/stcray_raw/STCray_TestSet/
+data/stcray_raw/STCray_Augmented/
+
+# YOLO formatted datasets (STCray - too large for Git LFS)
+data/yolo_dataset/
+data/yolo_dataset_test/
+data/stcray_raw/
+data/stcray_processed/
+data/stcray/
+
+# CargoXray dataset (tracked by Git LFS, but excluded from regular git)
+# Uncomment these lines to exclude from git entirely:
+# data/cargoxray/
+# data/cargoxray_yolo/
+
+# Custom test images
+data/test_xrays/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Test outputs
+test_results/
+*.pytest_cache/
+
+# YOLO training outputs
+runs/
+runs/detect/
+*.pt  # YOLO weights
+*.onnx  # ONNX exported models
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover

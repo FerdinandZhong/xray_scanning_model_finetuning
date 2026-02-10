@@ -1,0 +1,79 @@
+# X-ray YOLO Detection Jobs Configuration
+#
+# This configuration defines the job sequence for YOLO-based X-ray detection on CAI:
+# 1. setup_environment: Create Python venv and install dependencies (PyTorch, Ultralytics, etc.)
+# 2. download_dataset: Download STCray dataset from HuggingFace
+# 3. yolo_training: Convert data to YOLO format and train YOLO model
+#
+# Key Differences from VLM Approach:
+# - No VQA generation needed (direct bbox training)
+# - Much faster training (hours vs days)
+# - Smaller model size (11-47MB vs 14GB)
+# - Lower resource requirements (2-8GB VRAM vs 16GB+)
+#
+# Environment Variables:
+# - FORCE_REINSTALL: Set to "true" to force full environment reinstall (default: "false")
+# - MODEL_NAME: YOLO model variant (yolov8n, yolov8s, yolov8m, yolov11n, default: yolov8n.pt)
+# - EPOCHS: Training epochs (default: 100)
+# - BATCH_SIZE: Batch size (default: 16)
+# - IMG_SIZE: Input image size (default: 640)
+# - EXPORT_ONNX: Export to ONNX (default: false)
+# - VAL_SPLIT: Validation split ratio (default: 0.2)
+#
+# Job Dependencies (handled automatically by CAI):
+# - setup_environment (root) → download_dataset → yolo_training
+# - When parent job succeeds, child jobs auto-trigger automatically
+
+jobs:
+  # Job 1: Setup Python Environment (ROOT JOB)
+  setup_environment:
+    name: "Setup Python Environment"
+    description: "Create Python venv and install dependencies (PyTorch, Ultralytics YOLO, etc.)"
+    script: "cai_integration/setup_environment.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 16
+    timeout: 3600  # 1 hour for pip installs
+    parent_job_key: null
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+    environment:
+      FORCE_REINSTALL: "false"
+
+  # Job 2: Download STCray Dataset
+  download_dataset:
+    name: "Download STCray Dataset"
+    description: "Download STCray dataset from HuggingFace (46k images with 21 threat categories)"
+    script: "cai_integration/download_dataset.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 8
+    timeout: 3600  # 1 hour for download
+    parent_job_key: "setup_environment"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+
+  # Job 3: YOLO Training
+  # Converts STCray data to YOLO format, then trains YOLO model
+  # Model selection: yolov8n (fastest), yolov8s (balanced), yolov8m (accurate), yolov11n (latest)
+  yolo_training:
+    name: "Train YOLO Detection Model"
+    description: "Convert STCray to YOLO format and train object detection model (fast, lightweight)"
+    script: "cai_integration/yolo_training.py"
+    kernel: "python3"
+    cpu: 8
+    memory: 32
+    gpu: 1  # Single GPU is sufficient for YOLO training
+    timeout: 14400  # 4 hours (YOLO trains much faster than VLM)
+    parent_job_key: "download_dataset"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5"
+    environment:
+      MODEL_NAME: "yolov8n.pt"  # yolov8n (fastest), yolov8s, yolov8m, yolov11n
+      EPOCHS: "100"
+      BATCH_SIZE: "16"
+      IMG_SIZE: "640"
+      EXPORT_ONNX: "false"  # Set to "true" to export ONNX for production
+      VAL_SPLIT: "0.2"
+
+# Note: To deploy the trained model as an API:
+# 1. Use scripts/serve_yolo_api.sh locally
+# 2. Or create a CAI Application for persistent API server
+# 3. The API provides OpenAI-compatible endpoints at /v1/chat/completions

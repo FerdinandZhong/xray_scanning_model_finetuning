@@ -1,0 +1,23 @@
+# Git LFS Configuration for X-ray Detection Project
+
+# Dataset files
+*.zip filter=lfs diff=lfs merge=lfs -text
+*.rar filter=lfs diff=lfs merge=lfs -text
+*.tar.gz filter=lfs diff=lfs merge=lfs -text
+
+# Image files (for datasets)
+data/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+data/**/*.jpeg filter=lfs diff=lfs merge=lfs -text
+data/**/*.png filter=lfs diff=lfs merge=lfs -text
+
+# Annotation files (large JSON)
+data/**/*.json filter=lfs diff=lfs merge=lfs -text
+
+# Model files
+*.pt filter=lfs diff=lfs merge=lfs -text
+*.pth filter=lfs diff=lfs merge=lfs -text
+*.onnx filter=lfs diff=lfs merge=lfs -text
+*.safetensors filter=lfs diff=lfs merge=lfs -text
+
+# Note: Negative patterns (!) are not supported in .gitattributes
+# To exclude files from LFS, add them to .gitignore instead

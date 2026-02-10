@@ -245,29 +245,76 @@ def generate_reasoning(
 
 
 def process_vlm_response(
-    vlm_answer: str,
+    vlm_answer: str | Dict[str, Any],
     declared_items: Optional[List[str]] = None,
     metadata: Optional[Dict] = None,
 ) -> Dict[str, Any]:
     """
     Complete post-processing pipeline for VLM response.
+    Handles both structured JSON (dict) and natural language (str) inputs.
     
     Args:
-        vlm_answer: Answer from VLM
+        vlm_answer: Answer from VLM (str or dict with structured output)
         declared_items: Items declared by passenger
         metadata: Additional metadata (e.g., occlusion info)
     
     Returns:
         Processed result with risk assessment and recommendations
     """
-    # Extract detected items from VLM answer
-    detected_items = extract_items_from_text(vlm_answer)
-    
-    # Check for occlusion indicators in text
-    has_occlusion = any(
-        word in vlm_answer.lower()
-        for word in ["conceal", "hidden", "occluded", "partially", "obscured"]
+    from inference.json_parser import (
+        parse_json_response,
+        extract_items_from_json,
+        fallback_to_text_extraction,
     )
+    
+    # Initialize variables
+    detected_items = []
+    items_with_metadata = []  # List of {name, confidence, location}
+    has_occlusion = False
+    confidence_scores = {}
+    item_locations = {}
+    
+    # Handle structured JSON output (from guided generation)
+    if isinstance(vlm_answer, dict):
+        json_data = vlm_answer
+        items_with_metadata = extract_items_from_json(json_data)
+        detected_items = [item["name"] for item in items_with_metadata]
+        has_occlusion = json_data.get("has_concealed_items", False)
+        
+        # Extract confidence and location mappings
+        for item in items_with_metadata:
+            confidence_scores[item["name"]] = item["confidence"]
+            item_locations[item["name"]] = item["location"]
+    
+    # Handle string output (natural language or JSON string)
+    else:
+        # Try to parse as JSON first
+        json_data = parse_json_response(vlm_answer)
+        
+        if json_data:
+            # Successfully parsed JSON from string
+            items_with_metadata = extract_items_from_json(json_data)
+            detected_items = [item["name"] for item in items_with_metadata]
+            has_occlusion = json_data.get("has_concealed_items", False)
+            
+            for item in items_with_metadata:
+                confidence_scores[item["name"]] = item["confidence"]
+                item_locations[item["name"]] = item["location"]
+        else:
+            # Fallback to text extraction for natural language
+            items_with_metadata = fallback_to_text_extraction(vlm_answer)
+            detected_items = [item["name"] for item in items_with_metadata]
+            
+            # Extract confidence and location from metadata
+            for item in items_with_metadata:
+                confidence_scores[item["name"]] = item["confidence"]
+                item_locations[item["name"]] = item["location"]
+            
+            # Check for occlusion indicators in text
+            has_occlusion = any(
+                word in vlm_answer.lower()
+                for word in ["conceal", "hidden", "occluded", "partially", "obscured"]
+            )
     
     # Compare with declaration
     declaration_comparison = None
@@ -291,6 +338,9 @@ def process_vlm_response(
     # Build result
     result = {
         "detected_items": detected_items,
+        "item_details": items_with_metadata,  # NEW: Full item details with confidence & location
+        "confidence_scores": confidence_scores,  # NEW: Map of item -> confidence
+        "item_locations": item_locations,  # NEW: Map of item -> location
         "risk_level": risk_level,
         "recommended_action": recommended_action,
         "reasoning": reasoning,

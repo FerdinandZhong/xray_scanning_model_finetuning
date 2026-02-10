@@ -1,0 +1,13 @@
+# CargoXray Dataset - YOLO Format
+# Converted from Roboflow COCO format
+# Source: https://app.roboflow.com/ds/BbQux1Jbmr
+
+# Paths (relative to this file)
+path: /Users/zhongqishuai/Projects/cldr_projects/xray_scanning_model_finetuning/data/cargoxray_yolo
+train: train/images
+val: valid/images
+test: test/images
+
+# Classes
+nc: 16
+names: ['auto_parts', 'bags', 'bicycle', 'car_wheels', 'clothes', 'fabrics', 'lamps', 'office_supplies', 'shoes', 'spare_parts', 'tableware', 'textiles', 'tools', 'toys', 'unknown', 'xray_objects']
