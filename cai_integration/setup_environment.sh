@@ -2,7 +2,7 @@
 set -e
 
 echo "=============================================================="
-echo "Starting X-ray VQA environment setup"
+echo "Starting X-ray VQA environment setup (with uv - ultra-fast)"
 echo "=============================================================="
 
 # Sync latest code from git (if in git repo)
@@ -82,18 +82,38 @@ else
     # Disable --user flag (conflicts with virtualenv)
     export PIP_USER=0
 
-    # Try to upgrade pip (non-critical)
-    echo "Attempting to upgrade pip..."
-    if pip install --upgrade pip; then
-        echo "✓ Pip upgraded successfully"
+    # Install uv if not already installed
+    echo "Installing uv (ultra-fast Python package installer)..."
+    if ! command -v uv &> /dev/null; then
+        echo "uv not found, installing..."
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        # Add uv to PATH for current session
+        export PATH="$HOME/.cargo/bin:$PATH"
+        echo "✓ uv installed successfully"
     else
-        echo "⚠ Pip upgrade failed (continuing anyway)"
+        echo "✓ uv already installed"
+    fi
+
+    # Verify uv is available
+    if ! command -v uv &> /dev/null; then
+        echo "⚠ uv installation failed, falling back to pip..."
+        USE_UV=false
+    else
+        echo "✓ Using uv version: $(uv --version)"
+        USE_UV=true
     fi
 
     # Install dependencies from requirements.txt
     echo "Installing dependencies from setup/requirements.txt..."
     if [ -f "setup/requirements.txt" ]; then
-        pip install -r setup/requirements.txt
+        if [ "$USE_UV" = "true" ]; then
+            echo "Using uv for ultra-fast installation (10-100x faster than pip)..."
+            uv pip install -r setup/requirements.txt
+        else
+            echo "Using pip (fallback)..."
+            pip install --upgrade pip
+            pip install -r setup/requirements.txt
+        fi
         echo "✓ All dependencies installed successfully"
     else
         echo "❌ Error: setup/requirements.txt not found"
@@ -105,7 +125,10 @@ else
     python -c "import torch; import transformers; import peft; print(f'PyTorch: {torch.__version__}, Transformers: {transformers.__version__}, PEFT: {peft.__version__}')"
 
     echo "=============================================================="
-    echo "Environment setup completed successfully"
+    echo "Environment setup completed successfully!"
+    if [ "$USE_UV" = "true" ]; then
+        echo "✓ Installed using uv (10-100x faster than pip)"
+    fi
     echo "Virtual environment location: $VENV_PATH"
     echo "=============================================================="
 fi

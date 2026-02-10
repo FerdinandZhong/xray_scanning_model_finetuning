@@ -8,8 +8,15 @@ This script is the Python entry point for the CAI job that:
 
 The actual setup logic is in setup_environment.sh which:
 1. Checks if venv exists (reuses if yes, creates if no)
-2. Installs PyTorch, Transformers, PEFT, and other dependencies
-3. Verifies installation
+2. Installs uv (ultra-fast Python package installer, 10-100x faster than pip)
+3. Installs PyTorch, Transformers, PEFT, and other dependencies using uv
+4. Verifies installation
+
+Benefits of uv:
+- 10-100x faster than pip for package installation
+- Better dependency resolution
+- Parallel downloads with global cache
+- Backward compatible with pip (uses same requirements.txt)
 """
 
 import subprocess

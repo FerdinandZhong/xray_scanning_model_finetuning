@@ -39,7 +39,19 @@ jobs:
     environment:
       FORCE_REINSTALL: "false"
 
-  # Job 2: Download STCray Dataset
+  # Job 2a: Download Luggage X-ray Dataset (Optional - for luggage_xray dataset)
+  download_luggage_xray:
+    name: "Download Luggage X-ray Dataset"
+    description: "Download Luggage X-ray dataset from Roboflow (7k images with 12 classes including 5 threats)"
+    script: "cai_integration/download_luggage_xray.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 8
+    timeout: 3600  # 1 hour for download
+    parent_job_key: "setup_environment"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+
+  # Job 2b: Download STCray Dataset (Optional - for stcray dataset)
   download_dataset:
     name: "Download STCray Dataset"
     description: "Download STCray dataset from HuggingFace (46k images with 21 threat categories)"
@@ -52,18 +64,18 @@ jobs:
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
 
   # Job 3: YOLO Training
-  # Converts STCray data to YOLO format, then trains YOLO model
+  # Supports multiple datasets: luggage_xray (recommended), cargoxray (quick), stcray (production)
   # Model selection: yolov8n (fastest), yolov8s (balanced), yolov8m (accurate), yolov11n (latest)
   yolo_training:
     name: "Train YOLO Detection Model"
-    description: "Convert STCray to YOLO format and train object detection model (fast, lightweight)"
+    description: "Train YOLO object detection model on selected dataset (fast, lightweight)"
     script: "cai_integration/yolo_training.py"
     kernel: "python3"
     cpu: 8
     memory: 32
     gpu: 1  # Single GPU is sufficient for YOLO training
-    timeout: 14400  # 4 hours (YOLO trains much faster than VLM)
-    parent_job_key: "download_dataset"
+    timeout: 7200  # 2 hours (adjusted by GitHub Actions based on dataset)
+    parent_job_key: "download_luggage_xray"  # Updated by GitHub Actions based on dataset
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5"
     environment:
       MODEL_NAME: "yolov8n.pt"  # yolov8n (fastest), yolov8s, yolov8m, yolov11n
@@ -72,6 +84,7 @@ jobs:
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"  # Set to "true" to export ONNX for production
       VAL_SPLIT: "0.2"
+      DATASET: "luggage_xray"  # luggage_xray (recommended), cargoxray, or stcray (overridden by GitHub Actions)
 
 # Note: To deploy the trained model as an API:
 # 1. Use scripts/serve_yolo_api.sh locally

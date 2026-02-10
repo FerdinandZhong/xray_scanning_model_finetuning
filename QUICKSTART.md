@@ -1,348 +1,263 @@
-# Quick Start Guide - Cloudera AI Workspace
+# Quick Start Guide
 
-This guide provides step-by-step instructions to get started with X-ray VQA fine-tuning in Cloudera AI Workspace.
+Get started with X-ray threat detection in minutes using the Luggage X-ray dataset.
 
 ## Prerequisites
 
-- Cloudera AI Workspace with GPU access
 - Python 3.10+
-- At least 2x 24GB GPUs for training
-- ~100GB storage for dataset and model
+- GPU with at least 8GB VRAM (for training)
+- ~10GB storage for dataset
 
 ## Choose Your Approach
 
-### YOLO Detection (Recommended for Production)
-- **Fast**: 20-100ms inference, 2-4 hours training
+### YOLO Detection (Recommended)
+- **Fast**: 20-100ms inference, 1 hour training
 - **Lightweight**: 11-47MB models, 2-8GB VRAM
-- **Dataset**: STCray (46k images, 21 classes)
-- **Guide**: See [docs/YOLO_TRAINING.md](docs/YOLO_TRAINING.md)
+- **Dataset**: Luggage X-ray (7k images, 12 classes including 5 threats)
+- **Best for**: Production deployment
 
-### VLM Approach (Advanced, Research)
+### VLM Approach (Advanced)
 - **Flexible**: Natural language reasoning
-- **Large**: 14GB model, 16GB+ VRAM, days of training
-- **Dataset**: OPIXray (8k images, 5 classes)
-- **Guide**: Follow this quickstart
+- **Large**: Multi-GB models, 16GB+ VRAM
+- **Dataset**: STCray with VQA format
+- **Best for**: Research, complex queries
 
 ---
 
-## Step-by-Step Setup (VLM Approach)
+## Quick Start - YOLO on Luggage X-ray
 
-### 1. Clone/Upload Project to Workspace
+### 1. Setup Environment
 
 ```bash
-# If using git
+# Clone repository
 git clone <your-repo-url>
 cd xray_scanning_model_finetuning
 
-# Or upload the project directory to your workspace
-```
-
-### 2. Create Virtual Environment
-
-```bash
-# Create and activate virtual environment
-bash scripts/setup_venv.sh
-
-# Activate
+# Create virtual environment
+python3 -m venv .venv
 source .venv/bin/activate
 
-# Verify GPU access
-python -c "import torch; print(f'GPUs available: {torch.cuda.device_count()}')"
+# Install dependencies
+pip install ultralytics torch torchvision pillow pyyaml tqdm requests openai
 ```
 
-### 3. Download OPIXray Dataset
+### 2. Download Dataset
 
 ```bash
-# This will provide manual download instructions
-python data/download_opixray.py --output-dir data/opixray
-
-# After downloading, verify the dataset
-python data/download_opixray.py --verify --output-dir data/opixray
+# Download Luggage X-ray dataset (530MB)
+curl -L "https://app.roboflow.com/ds/nMb0ckPbFf?key=EZzAfTucdZ" > roboflow.zip
+unzip roboflow.zip
+rm roboflow.zip
 ```
 
-**Note:** OPIXray dataset needs to be downloaded manually from:
-- GitHub: https://github.com/OPIXray-author/OPIXray
-- Google Drive: (check repository README)
-
-Expected structure:
-```
-data/opixray/
-├── images/
-│   ├── P00001.jpg
-│   ├── P00002.jpg
-│   └── ...
-└── annotations/
-    ├── train.json
-    ├── val.json
-    └── test.json
-```
-
-### 4. Prepare VQA Dataset
+### 3. Convert to YOLO Format
 
 ```bash
-# Generate VQA pairs from COCO annotations
-python data/create_vqa_pairs.py \
-  --opixray-root data/opixray \
-  --split all \
-  --samples-per-image 2
+# Convert OpenAI JSONL to YOLO format (parallel downloads)
+python scripts/convert_luggage_xray_to_yolo.py \
+    --input-dir data/luggage_xray \
+    --output-dir data/luggage_xray_yolo \
+    --max-workers 8
 
-# This creates:
-# - data/opixray_vqa_train.jsonl
-# - data/opixray_vqa_val.jsonl
-# - data/opixray_vqa_test.jsonl
-
-# Add synthetic customs declarations
-for split in train val test; do
-  python data/declaration_simulator.py \
-    --input data/opixray_vqa_${split}.jsonl \
-    --output data/opixray_vqa_${split}_final.jsonl \
-    --match-ratio 0.5
-done
-
-# Update config to use final files
-sed -i 's/opixray_vqa_train.jsonl/opixray_vqa_train_final.jsonl/g' configs/train_local.yaml
-sed -i 's/opixray_vqa_val.jsonl/opixray_vqa_val_final.jsonl/g' configs/train_local.yaml
+# Expected output:
+# ✓ data/luggage_xray_yolo/
+#   ├── images/train/ (6,164 images)
+#   ├── images/valid/ (956 images)
+#   ├── labels/train/ (6,164 .txt files)
+#   ├── labels/valid/ (956 .txt files)
+#   └── data.yaml
 ```
 
-### 5. Start Training (Phase 1)
+### 4. Train YOLO Model
 
 ```bash
-# Check GPU availability
-nvidia-smi
+# Train YOLOv8n (fastest, ~1 hour on T4 GPU)
+python training/train_yolo.py \
+    --data data/luggage_xray_yolo/data.yaml \
+    --model yolov8n.pt \
+    --epochs 100 \
+    --batch 16 \
+    --imgsz 640
 
-# Start training (will automatically use all available GPUs)
-python training/train_local.py --config configs/train_local.yaml
-
-# Monitor in another terminal
-tensorboard --logdir outputs/qwen25vl_lora_phase1/logs --host 0.0.0.0 --port 6006
+# Or use YOLOv8s for better accuracy (~2 hours)
+python training/train_yolo.py \
+    --data data/luggage_xray_yolo/data.yaml \
+    --model yolov8s.pt \
+    --epochs 100 \
+    --batch 8 \
+    --imgsz 640
 ```
 
-**Training Duration:** ~6-8 hours on 4x24GB GPUs
-
-**To resume from checkpoint:**
-```bash
-python training/train_local.py \
-  --config configs/train_local.yaml \
-  --resume-from-checkpoint outputs/qwen25vl_lora_phase1/checkpoint-500
-```
-
-### 6. Evaluate Model
+### 5. Test Model
 
 ```bash
-# VQA metrics (accuracy, F1, BLEU, ROUGE)
-python evaluation/eval_vqa.py \
-  --model outputs/qwen25vl_lora_phase1 \
-  --test-file data/opixray_vqa_test_final.jsonl \
-  --output results/eval_vqa_results.json \
-  --max-samples 100  # For quick test
+# Run inference on validation set
+python scripts/test_yolo_inference.py \
+    --model runs/detect/train/weights/best.pt \
+    --images data/luggage_xray_yolo/images/valid/*.jpg \
+    --conf 0.25
 
-# Operational benchmarks (latency, throughput)
-python evaluation/eval_operational.py \
-  --model outputs/qwen25vl_lora_phase1 \
-  --test-file data/opixray_vqa_test_final.jsonl \
-  --batch-sizes 1,2,4,8 \
-  --output results/operational_benchmarks.json
+# Start API server (OpenAI-compatible)
+python inference/yolo_api_server.py \
+    --model runs/detect/train/weights/best.pt \
+    --port 8000
 ```
 
-### 7. Test Inference
+### 6. Test API
 
 ```bash
-# Test vLLM server (for quick validation)
-python inference/vllm_server.py \
-  --model outputs/qwen25vl_lora_phase1 \
-  --test-mode
-
-# Start API server for production-like testing
-python inference/api_server.py \
-  --model outputs/qwen25vl_lora_phase1 \
-  --host 0.0.0.0 \
-  --port 8080
+# Test with curl
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "yolo",
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          {"type": "text", "text": "What objects do you see?"},
+          {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}
+        ]
+      }
+    ]
+  }'
 ```
-
-Access API documentation: http://<workspace-url>:8080/docs
-
-## Common Issues and Solutions
-
-### Issue 1: CUDA Out of Memory
-
-**Solution:**
-```yaml
-# Edit configs/train_local.yaml
-per_device_train_batch_size: 1  # Reduce from 2
-gradient_accumulation_steps: 16  # Increase to maintain effective batch size
-```
-
-### Issue 2: Slow Data Loading
-
-**Solution:**
-```yaml
-# Edit configs/train_local.yaml
-dataloader_num_workers: 0  # Disable multi-process loading in Cloudera
-```
-
-### Issue 3: vLLM Installation Fails
-
-**Solution:**
-```bash
-# Install with specific CUDA version
-pip install vllm --extra-index-url https://download.pytorch.org/whl/cu121
-```
-
-### Issue 4: Module Import Errors
-
-**Solution:**
-```bash
-# Ensure packages are in Python path
-export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-```
-
-## Resource Requirements
-
-### Training (Phase 1)
-- **GPUs:** 2-4x 24GB (minimum)
-- **RAM:** 64GB (minimum)
-- **Storage:** 100GB
-- **Time:** 6-8 hours
-
-### Inference (vLLM)
-- **GPUs:** 1-2x 24GB
-- **RAM:** 32GB
-- **Latency:** <500ms per image
-
-## Expected Results
-
-### Training Metrics
-- Training loss: Should decrease to <1.0
-- Validation loss: Should stabilize around 0.8-1.2
-- Training time: 6-8 hours (4 GPUs)
-
-### Evaluation Metrics
-- VQA Accuracy: >75% (target: >80%)
-- F1 Score: >0.80
-- BLEU: >0.60
-- Inference Latency (P95): <500ms
-
-## Next Steps After Phase 1
-
-1. **Analyze Results:**
-   ```bash
-   # View evaluation report
-   cat results/eval_vqa_results.json
-   ```
-
-2. **Tune Hyperparameters (if needed):**
-   - Increase epochs: `num_train_epochs: 5`
-   - Adjust learning rate: `learning_rate: 1e-4`
-   - Larger LoRA rank: `lora.r: 128`
-
-3. **Deploy to Production:**
-   ```bash
-   # Start production API server
-   python inference/api_server.py \
-     --model outputs/qwen25vl_lora_phase1 \
-     --workers 2 \
-     --tensor-parallel-size 2
-   ```
-
-4. **Scale to Phase 2 (Ray):**
-   ```bash
-   # Setup Ray cluster
-   ray start --head --port=6379
-   
-   # Run distributed training
-   python training/train_ray.py \
-     --config configs/train_ray.yaml \
-     --num-workers 8
-   ```
-
-## Monitoring and MLOps
-
-### Monitor Model Performance
-```bash
-# Simulate monitoring
-python mlops/monitoring_service.py \
-  --simulate \
-  --duration 300 \
-  --output metrics/monitoring_summary.json
-```
-
-### Detect Drift
-```bash
-# After collecting baseline metrics
-python mlops/drift_detector.py \
-  --baseline metrics/baseline_data.json \
-  --current metrics/current_monitoring.json \
-  --output metrics/drift_report.json
-```
-
-## File Locations in Cloudera Workspace
-
-```
-/home/cdsw/xray_scanning_model_finetuning/
-├── data/opixray/              # Dataset (you download)
-├── outputs/                   # Training outputs
-│   └── qwen25vl_lora_phase1/  # Fine-tuned model
-├── results/                   # Evaluation results
-├── metrics/                   # Monitoring data
-└── .venv/                     # Virtual environment
-```
-
-## Useful Commands
-
-### Check GPU Usage
-```bash
-watch -n 1 nvidia-smi
-```
-
-### Monitor Training Progress
-```bash
-tail -f outputs/qwen25vl_lora_phase1/logs/events.out.tfevents.*
-```
-
-### Kill Stuck Process
-```bash
-pkill -9 -f train_local.py
-```
-
-### Check Disk Usage
-```bash
-du -sh data/ outputs/ results/
-```
-
-## Support
-
-For issues specific to:
-- **Dataset:** Check OPIXray repository issues
-- **Training:** Review logs in `outputs/qwen25vl_lora_phase1/logs/`
-- **GPU errors:** Check CUDA compatibility with `torch.cuda.is_available()`
-- **vLLM:** Check vLLM documentation and GitHub issues
-
-## Checklist
-
-Before starting training, ensure:
-- [ ] GPU access verified (`nvidia-smi` works)
-- [ ] Virtual environment activated
-- [ ] OPIXray dataset downloaded and verified
-- [ ] VQA dataset created (~17k samples)
-- [ ] Declarations added to VQA samples
-- [ ] Config file paths are correct
-- [ ] At least 100GB free disk space
-- [ ] TensorBoard accessible (optional)
-
-After training, verify:
-- [ ] Training completed without errors
-- [ ] Model saved in `outputs/qwen25vl_lora_phase1/`
-- [ ] Evaluation metrics generated
-- [ ] VQA accuracy >75%
-- [ ] Inference latency <500ms
-
-Ready to deploy:
-- [ ] API server starts successfully
-- [ ] Can send test requests
-- [ ] Responses are reasonable
-- [ ] Monitoring is configured
 
 ---
 
-**Last Updated:** 2026-02-05
-**Version:** 1.0.0
+## CAI Deployment (Recommended for Production)
+
+### Option 1: GitHub Actions (Automated)
+
+1. Go to **Actions** tab → **Deploy X-ray Detection to CAI**
+2. Click **Run workflow**
+3. Select:
+   - **model_type**: `yolo`
+   - **dataset**: `luggage_xray` (recommended)
+   - **trigger_jobs**: `true`
+4. Monitor progress in CAI Workspace
+
+### Option 2: Manual CAI Setup
+
+```bash
+# In CAI Workspace terminal
+git clone <your-repo-url>
+cd xray_scanning_model_finetuning
+
+# Download and prepare dataset
+python cai_integration/download_luggage_xray.py
+
+# Train model
+python cai_integration/yolo_training.py \
+    --dataset luggage_xray \
+    --epochs 100 \
+    --batch 16
+```
+
+See [docs/LUGGAGE_XRAY_CAI.md](docs/LUGGAGE_XRAY_CAI.md) for detailed CAI guide.
+
+---
+
+## Testing Models Before Training
+
+Test pre-trained models on the dataset before fine-tuning:
+
+```bash
+# Test GPT-4.1 (requires OpenAI API key)
+export OPENAI_API_KEY="your-api-key"
+python scripts/test_gpt4_luggage.py --num-samples 10
+
+# Test RolmOCR (requires endpoint URL)
+python scripts/test_rolmocr_luggage.py \
+    --base-url "https://your-endpoint.cloudera.site/openai/v1" \
+    --model "reducto/RolmOCR" \
+    --num-samples 10
+
+# Test PaddleOCR (for text detection comparison)
+python scripts/test_paddleocr_luggage.py \
+    --base-url "http://your-paddleocr-endpoint:8080" \
+    --num-samples 10
+```
+
+Results are saved to `test_results/` with confusion matrices and detailed reports.
+
+---
+
+## Alternative Datasets
+
+### CargoXray (Quick Baseline)
+- 659 images, 16 classes
+- 30 minutes training
+- Best for pipeline validation
+
+```bash
+# Download
+curl -L "https://app.roboflow.com/ds/BbQux1Jbmr?key=CmUGXQ0DU6" > roboflow.zip
+unzip roboflow.zip && rm roboflow.zip
+
+# Convert
+python scripts/convert_cargoxray_to_yolo.py \
+    --input-dir data/cargoxray \
+    --output-dir data/cargoxray_yolo
+
+# Train
+python training/train_yolo.py \
+    --data data/cargoxray_yolo/data.yaml \
+    --model yolov8n.pt \
+    --epochs 100
+```
+
+See [docs/CARGOXRAY_QUICKSTART.md](docs/CARGOXRAY_QUICKSTART.md)
+
+### STCray (Production Scale)
+- 46,642 images, 21 classes
+- 4 hours training
+- Best for large-scale deployment
+
+See [docs/DATASETS_COMPARISON.md](docs/DATASETS_COMPARISON.md)
+
+---
+
+## VLM Approach (Advanced)
+
+For VLM fine-tuning with VQA format:
+
+1. Generate VQA pairs from dataset
+2. Fine-tune Qwen2.5-VL or similar model
+3. Deploy with vLLM
+
+See [docs/VQA_GENERATOR_VERIFICATION.md](docs/VQA_GENERATOR_VERIFICATION.md) for details.
+
+---
+
+## Troubleshooting
+
+### GPU Out of Memory
+- Reduce batch size: `--batch 8` or `--batch 4`
+- Use smaller model: `yolov8n.pt` instead of `yolov8s.pt`
+- Reduce image size: `--imgsz 512`
+
+### Dataset Download Issues
+- Check internet connection
+- Verify Roboflow API key is valid
+- Try downloading manually and extracting to `data/luggage_xray/`
+
+### Training Not Converging
+- Increase epochs: `--epochs 150` or `--epochs 200`
+- Adjust learning rate: `--lr0 0.001`
+- Check dataset labels with: `yolo val data=data/luggage_xray_yolo/data.yaml`
+
+---
+
+## Next Steps
+
+- 📖 Read [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for production deployment
+- 📊 Compare datasets in [docs/DATASETS_COMPARISON.md](docs/DATASETS_COMPARISON.md)
+- 🚀 Use GitHub Actions for automated CAI deployment
+- 📈 Monitor training with TensorBoard: `tensorboard --logdir runs/detect/`
+
+## Support
+
+For issues and questions:
+- Documentation: [docs/](docs/)
+- GitHub Issues: Create an issue in the repository
