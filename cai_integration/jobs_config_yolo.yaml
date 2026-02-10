@@ -72,6 +72,7 @@ jobs:
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"  # Set to "true" to export ONNX for production
       VAL_SPLIT: "0.2"
+      DATASET: "stcray"  # cargoxray or stcray (overridden by GitHub Actions)
 
 # Note: To deploy the trained model as an API:
 # 1. Use scripts/serve_yolo_api.sh locally

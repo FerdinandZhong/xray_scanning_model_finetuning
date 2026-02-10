@@ -218,19 +218,26 @@ jobs:
               config['jobs']['yolo_training']['environment']['EXPORT_ONNX'] = 'true' if '${{ github.event.inputs.export_onnx }}' == 'true' else 'false'
               config['jobs']['yolo_training']['environment']['DATASET'] = dataset
               
-              # Adjust timeout for dataset size
+              # Adjust timeout and dependencies based on dataset
               if dataset == 'cargoxray':
+                  # CargoXray is in Git LFS, no download needed
                   config['jobs']['yolo_training']['timeout'] = 3600  # 1 hour
-                  config['jobs']['download_dataset']['timeout'] = 1800  # 30 min
+                  config['jobs']['yolo_training']['parent_job_key'] = 'setup_environment'  # Skip download
+                  config['jobs']['download_dataset']['timeout'] = 1800  # 30 min (not used but keep for clarity)
+                  print(f"✓ CargoXray: Using Git LFS (no download job needed)")
               else:  # stcray
+                  # STCray needs to be downloaded from HuggingFace
                   config['jobs']['yolo_training']['timeout'] = 14400  # 4 hours
+                  config['jobs']['yolo_training']['parent_job_key'] = 'download_dataset'
                   config['jobs']['download_dataset']['timeout'] = 3600  # 1 hour
+                  print(f"✓ STCray: Will download from HuggingFace")
               
               print(f"✓ YOLO configuration:")
               print(f"  Dataset: {dataset}")
               print(f"  Model: {config['jobs']['yolo_training']['environment']['MODEL_NAME']}")
               print(f"  Epochs: {config['jobs']['yolo_training']['environment']['EPOCHS']}")
               print(f"  Export ONNX: {config['jobs']['yolo_training']['environment']['EXPORT_ONNX']}")
+              print(f"  Parent Job: {config['jobs']['yolo_training']['parent_job_key']}")
               print(f"  Timeout: {config['jobs']['yolo_training']['timeout']}s")
           else:
               # Configure VLM-specific parameters
@@ -255,32 +262,61 @@ jobs:
           CML_HOST: ${{ secrets.CML_HOST }}
           CML_API_KEY: ${{ secrets.CML_API_KEY }}
         run: |
-          echo "📋 Creating CAI jobs for X-ray VQA pipeline..."
-          python cai_integration/create_jobs.py --project-id ${{ needs.setup-project.outputs.project_id }}
+          MODEL_TYPE="${{ github.event.inputs.model_type }}"
+          if [ "$MODEL_TYPE" = "yolo" ]; then
+            CONFIG_FILE="cai_integration/jobs_config_yolo.yaml"
+            echo "📋 Creating YOLO detection jobs..."
+          else
+            CONFIG_FILE="cai_integration/jobs_config.yaml"
+            echo "📋 Creating VLM training jobs..."
+          fi
+          
+          echo "Using config: $CONFIG_FILE"
+          python cai_integration/create_jobs.py \
+            --project-id ${{ needs.setup-project.outputs.project_id }} \
+            --config "$CONFIG_FILE"
           echo "✅ Jobs created"
 
       - name: Create job summary
         if: always()
         run: |
-          echo "## X-ray VQA Setup: Jobs" >> $GITHUB_STEP_SUMMARY
+          MODEL_TYPE="${{ github.event.inputs.model_type }}"
+          
+          echo "## X-ray Detection Setup: Jobs" >> $GITHUB_STEP_SUMMARY
           echo "**Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Model Type**: $MODEL_TYPE" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          if [ -z "${{ github.event.inputs.vllm_endpoint }}" ]; then
-            echo "⚠️ **vLLM Endpoint**: Not provided (placeholder used)" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "$MODEL_TYPE" = "yolo" ]; then
+            echo "### YOLO Configuration" >> $GITHUB_STEP_SUMMARY
+            echo "- **Dataset**: ${{ github.event.inputs.dataset }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Model**: ${{ github.event.inputs.yolo_model }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Epochs**: ${{ github.event.inputs.yolo_epochs }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Export ONNX**: ${{ github.event.inputs.export_onnx }}" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Action Required" >> $GITHUB_STEP_SUMMARY
-            echo "Before running the VQA generation job in CAI:" >> $GITHUB_STEP_SUMMARY
-            echo "1. Go to CAI UI → Jobs → generate_vqa" >> $GITHUB_STEP_SUMMARY
-            echo "2. Edit job environment variables" >> $GITHUB_STEP_SUMMARY
-            echo "3. Set VLLM_API_BASE to your actual vLLM server endpoint" >> $GITHUB_STEP_SUMMARY
-            echo "4. Then trigger the job manually" >> $GITHUB_STEP_SUMMARY
+            echo "### Jobs Created" >> $GITHUB_STEP_SUMMARY
+            echo "1. setup_environment" >> $GITHUB_STEP_SUMMARY
+            echo "2. download_dataset" >> $GITHUB_STEP_SUMMARY
+            echo "3. yolo_training ← Fine-tuning job" >> $GITHUB_STEP_SUMMARY
           else
-            echo "✅ **vLLM Endpoint**: ${{ github.event.inputs.vllm_endpoint }}" >> $GITHUB_STEP_SUMMARY
+            if [ -z "${{ github.event.inputs.vllm_endpoint }}" ]; then
+              echo "⚠️ **vLLM Endpoint**: Not provided (placeholder used)" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### Action Required" >> $GITHUB_STEP_SUMMARY
+              echo "Before running the VQA generation job in CAI:" >> $GITHUB_STEP_SUMMARY
+              echo "1. Go to CAI UI → Jobs → generate_vqa" >> $GITHUB_STEP_SUMMARY
+              echo "2. Edit job environment variables" >> $GITHUB_STEP_SUMMARY
+              echo "3. Set VLLM_API_BASE to your actual vLLM server endpoint" >> $GITHUB_STEP_SUMMARY
+              echo "4. Then trigger the job manually" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "✅ **vLLM Endpoint**: ${{ github.event.inputs.vllm_endpoint }}" >> $GITHUB_STEP_SUMMARY
+            fi
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Samples per Image**: ${{ github.event.inputs.samples_per_image }}" >> $GITHUB_STEP_SUMMARY
+            echo "**API Key**: ${{ github.event.inputs.api_key && '<configured>' || '<not provided>' }}" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Force Reinstall**: ${{ github.event.inputs.force_reinstall }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Samples per Image**: ${{ github.event.inputs.samples_per_image }}" >> $GITHUB_STEP_SUMMARY
-          echo "**API Key**: ${{ github.event.inputs.api_key && '<configured>' || '<not provided>' }}" >> $GITHUB_STEP_SUMMARY
 
   trigger-pipeline:
     needs: [setup-project, create-jobs]
