@@ -69,16 +69,22 @@ class XrayVQADataset(Dataset):
         # Get question and answer
         question = item["question"]
         answer = item["answer"]
+        question_type = item.get("metadata", {}).get("question_type", "general")
         
         # Format prompt for Qwen2.5-VL
         # The model expects: image + question, and learns to generate answer
-        prompt = f"Question: {question}\nAnswer:"
+        # For structured JSON questions, add explicit instruction
+        if question_type == "structured_list":
+            prompt = f"Question: {question}\nProvide your response in valid JSON format only.\nAnswer:"
+        else:
+            prompt = f"Question: {question}\nAnswer:"
         
         return {
             "image": image,
             "prompt": prompt,
             "answer": answer,
             "metadata": item.get("metadata", {}),
+            "question_type": question_type,
         }
 
 

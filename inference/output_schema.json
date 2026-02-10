@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "X-ray Item Detection Output",
+  "description": "Structured output schema for X-ray baggage scanning item detection with confidence scores and locations",
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "List of detected prohibited items",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Item category name",
+            "enum": [
+              "knife",
+              "folding knife",
+              "straight knife",
+              "utility knife",
+              "multi-tool knife",
+              "scissors",
+              "gun",
+              "handgun",
+              "pistol",
+              "firearm",
+              "explosive",
+              "blade",
+              "weapon",
+              "prohibited item"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "description": "Detection confidence score",
+            "minimum": 0.0,
+            "maximum": 1.0
+          },
+          "location": {
+            "type": "string",
+            "description": "Spatial location in the scan",
+            "enum": [
+              "upper-left",
+              "upper",
+              "upper-right",
+              "left",
+              "center",
+              "right",
+              "lower-left",
+              "lower",
+              "lower-right",
+              "center-left",
+              "center-right",
+              "upper-center",
+              "lower-center"
+            ]
+          },
+          "bbox": {
+            "type": "array",
+            "description": "Bounding box coordinates [x_center, y_center, width, height] normalized to [0, 1]",
+            "items": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0
+            },
+            "minItems": 4,
+            "maxItems": 4
+          }
+        },
+        "required": ["name", "confidence", "location"]
+      }
+    },
+    "total_count": {
+      "type": "integer",
+      "description": "Total number of prohibited items detected",
+      "minimum": 0
+    },
+    "has_concealed_items": {
+      "type": "boolean",
+      "description": "Whether any items are partially hidden or concealed"
+    }
+  },
+  "required": ["items", "total_count", "has_concealed_items"],
+  "additionalProperties": false
+}

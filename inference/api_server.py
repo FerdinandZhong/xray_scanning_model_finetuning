@@ -17,8 +17,8 @@ from pydantic import BaseModel
 from PIL import Image
 import uvicorn
 
-# Import vLLM server and post-processing (will be initialized)
-from inference.vllm_server import XrayVQAServer
+# Import inference engine and post-processing
+from inference.vllm_engine import create_inference_engine
 from inference.postprocess import process_vlm_response
 
 
@@ -30,13 +30,14 @@ class InspectionRequest(BaseModel):
     declared_items: Optional[List[str]] = None
     question: Optional[str] = None
     mode: str = "vqa"  # vqa, detection, comparison
+    use_structured: bool = True  # Use XGrammar structured JSON output
 
 
 class DetectedItem(BaseModel):
     """Detected item in X-ray scan."""
-    item: str
+    name: str
     confidence: float
-    location: Optional[str] = None
+    location: str
     occluded: bool = False
 
 
@@ -44,11 +45,13 @@ class InspectionResponse(BaseModel):
     """Response model for X-ray inspection."""
     scan_id: str
     risk_level: str  # low, medium, high
-    detected_items: List[Dict[str, Any]]
+    detected_items: List[DetectedItem]
+    item_details: List[Dict[str, Any]]  # Full details with confidence & location
     declaration_match: Optional[bool] = None
     reasoning: str
     recommended_action: str  # CLEAR, REVIEW, PHYSICAL_INSPECTION
     processing_time_ms: float
+    used_structured_output: bool  # Whether XGrammar was used
 
 
 # Initialize FastAPI app
@@ -58,17 +61,17 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Global vLLM server instance
-vllm_server: Optional[XrayVQAServer] = None
+# Global inference engine instance
+inference_engine = None
 
 
 @app.on_event("startup")
 async def startup_event():
-    """Initialize vLLM server on startup."""
-    global vllm_server
+    """Initialize inference engine on startup."""
+    global inference_engine
     
     # Will be set via command line args
-    print("FastAPI server started. vLLM engine will be initialized via startup config.")
+    print("FastAPI server started. Inference engine will be initialized via startup config.")
 
 
 @app.get("/")
@@ -86,7 +89,7 @@ async def health():
     """Detailed health check."""
     return {
         "status": "healthy",
-        "vllm_ready": vllm_server is not None,
+        "engine_ready": inference_engine is not None,
         "timestamp": time.time(),
     }
 
@@ -102,23 +105,50 @@ async def inspect_scan(request: InspectionRequest):
     Returns:
         Inspection results with risk assessment
     """
-    if vllm_server is None:
-        raise HTTPException(status_code=503, detail="vLLM server not initialized")
+    if inference_engine is None:
+        raise HTTPException(status_code=503, detail="Inference engine not initialized")
     
     start_time = time.perf_counter()
     
     try:
-        # Step 1: Run VQA inference (item recognition only)
-        if request.question:
-            # Use custom question
-            prompts = [vllm_server.prepare_prompt(request.question)]
-        else:
-            # Default: ask what items are visible
-            prompts = [vllm_server.prepare_prompt("What items are visible in this X-ray scan?")]
+        # Decode image from base64
+        if not request.image_base64:
+            raise HTTPException(status_code=400, detail="image_base64 is required")
         
-        # Generate VLM answer
-        vlm_answers = vllm_server.generate(prompts, max_tokens=256, temperature=0.0)
-        vlm_answer = vlm_answers[0]
+        image_bytes = base64.b64decode(request.image_base64)
+        image = Image.open(io.BytesIO(image_bytes))
+        
+        # Save temporarily for inference
+        temp_path = f"/tmp/scan_{request.scan_id}.jpg"
+        image.save(temp_path)
+        
+        # Step 1: Run VQA inference with structured or natural output
+        if request.use_structured:
+            # Use XGrammar guided JSON generation
+            if request.question:
+                prompt = request.question
+            else:
+                prompt = "List all items detected in this X-ray scan in JSON format."
+            
+            vlm_answer = inference_engine.generate_structured(
+                image_path=temp_path,
+                prompt=prompt,
+                max_tokens=500,
+                temperature=0.7,
+            )
+        else:
+            # Use natural language generation
+            if request.question:
+                prompt = request.question
+            else:
+                prompt = "What items are visible in this X-ray scan?"
+            
+            vlm_answer = inference_engine.generate_natural(
+                image_path=temp_path,
+                prompt=prompt,
+                max_tokens=256,
+                temperature=0.7,
+            )
         
         # Step 2: Post-process VLM response with declaration comparison
         post_processed = process_vlm_response(
@@ -128,13 +158,13 @@ async def inspect_scan(request: InspectionRequest):
         
         # Step 3: Format detected items for response
         detected_items_list = []
-        for item in post_processed["detected_items"]:
-            detected_items_list.append({
-                "item": item,
-                "confidence": 0.85,  # Could be extracted from VLM confidence if available
-                "location": "detected in scan",
-                "occluded": post_processed["has_occlusion"],
-            })
+        for item_detail in post_processed.get("item_details", []):
+            detected_items_list.append(DetectedItem(
+                name=item_detail["name"],
+                confidence=item_detail["confidence"],
+                location=item_detail["location"],
+                occluded=post_processed["has_occlusion"],
+            ))
         
         # Step 4: Get declaration match info
         declaration_match = None
@@ -150,11 +180,16 @@ async def inspect_scan(request: InspectionRequest):
             scan_id=request.scan_id,
             risk_level=post_processed["risk_level"],
             detected_items=detected_items_list,
+            item_details=post_processed.get("item_details", []),
             declaration_match=declaration_match,
             reasoning=post_processed["reasoning"],
             recommended_action=post_processed["recommended_action"],
             processing_time_ms=processing_time_ms,
+            used_structured_output=request.use_structured,
         )
+        
+        # Clean up temp file
+        Path(temp_path).unlink(missing_ok=True)
         
         return response
     
@@ -267,17 +302,33 @@ def main():
         default=1,
         help="Number of Uvicorn workers",
     )
+    parser.add_argument(
+        "--use-vllm",
+        action="store_true",
+        default=True,
+        help="Use vLLM engine (default, recommended for production)",
+    )
+    parser.add_argument(
+        "--use-transformers",
+        action="store_true",
+        help="Use Transformers engine (fallback, no XGrammar)",
+    )
     
     args = parser.parse_args()
     
-    # Initialize vLLM server
-    print("Initializing vLLM server...")
-    global vllm_server
-    vllm_server = XrayVQAServer(
+    # Initialize inference engine
+    print("Initializing inference engine...")
+    global inference_engine
+    
+    use_vllm = args.use_vllm and not args.use_transformers
+    
+    inference_engine = create_inference_engine(
         model_path=args.model,
-        tensor_parallel_size=args.tensor_parallel_size,
-        gpu_memory_utilization=args.gpu_memory_utilization,
+        use_vllm=use_vllm,
+        tensor_parallel_size=args.tensor_parallel_size if use_vllm else None,
+        gpu_memory_utilization=args.gpu_memory_utilization if use_vllm else None,
     )
+    print(f"✓ Inference engine ready ({'vLLM' if use_vllm else 'Transformers'})")
     
     print(f"\nStarting API server on {args.host}:{args.port}")
     print(f"API documentation: http://{args.host}:{args.port}/docs")

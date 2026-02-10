@@ -1,19 +1,37 @@
-# Minimal requirements for VQA generation on local laptop
-# This is a lightweight subset for data generation only (no training)
+# Minimal dependencies for local VQA workflow on laptop
+# Supports: (1) Sample dataset downloading, (2) VQA generation with Gemini
+# This avoids installing heavy ML frameworks (torch, transformers, vllm) locally
 
-# Core data processing
-datasets>=2.14.0
-pillow>=10.0.0
-tqdm>=4.65.0
+# ============================================================
+# Dataset Download (from HuggingFace)
+# ============================================================
+datasets>=2.16.0        # HuggingFace datasets library (STCray download)
+pillow>=10.2.0          # Image processing and saving
+tqdm>=4.66.0            # Progress bars for downloads
 
-# LLM API clients
-openai>=1.12.0              # Gemini via OpenAI-compatible endpoint (RECOMMENDED)
-anthropic>=0.18.0           # Claude (optional, expensive)
+# ============================================================
+# VQA Generation (Gemini API via OpenAI-compatible endpoint)
+# ============================================================
+openai>=1.12.0          # OpenAI client for Gemini via AI Gateway (RECOMMENDED)
+pyyaml>=6.0             # Config file parsing
 
-# Optional: For text-only LLM generation (if you want to use local models)
-# torch>=2.1.0
-# transformers>=4.37.0
-# accelerate>=0.26.0
+# ============================================================
+# Optional: Additional LLM Providers
+# ============================================================
+anthropic>=0.18.0       # Claude API (optional, more expensive than Gemini)
 
-# Utilities
-pyyaml>=6.0
+# ============================================================
+# Validation & Testing
+# ============================================================
+jsonschema>=4.20.0      # JSON schema validation for VQA output
+
+# ============================================================
+# NOT INCLUDED (not needed for local laptop workflow)
+# ============================================================
+# These are only needed for training/inference in CAI or on GPU servers:
+# - torch>=2.1.0 (heavy, ~2GB, only for training/inference)
+# - transformers>=4.37.0 (heavy, only for model loading)
+# - vllm>=0.5.0 (GPU inference engine, only for production)
+# - accelerate>=0.26.0 (distributed training support)
+# - bitsandbytes>=0.41.0 (quantization, only for training)
+# - peft>=0.7.0 (LoRA fine-tuning, only for training)

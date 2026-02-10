@@ -1,0 +1,20 @@
+# Git LFS tracking for large files
+
+# STCray dataset RAR files (will be tracked with LFS)
+*.rar filter=lfs diff=lfs merge=lfs -text
+data/stcray_raw/*.rar filter=lfs diff=lfs merge=lfs -text
+
+# Model files (if storing models in git, use LFS)
+*.bin filter=lfs diff=lfs merge=lfs -text
+*.safetensors filter=lfs diff=lfs merge=lfs -text
+*.pth filter=lfs diff=lfs merge=lfs -text
+*.ckpt filter=lfs diff=lfs merge=lfs -text
+
+# Large data files
+*.parquet filter=lfs diff=lfs merge=lfs -text
+*.arrow filter=lfs diff=lfs merge=lfs -text
+
+# Image archives
+*.zip filter=lfs diff=lfs merge=lfs -text
+*.tar.gz filter=lfs diff=lfs merge=lfs -text
+*.7z filter=lfs diff=lfs merge=lfs -text

@@ -1,35 +1,50 @@
-# X-ray Scanning Model Fine-tuning
+# X-ray Scanning Model Training
 
-Fine-tuning Qwen2.5-VL-7B-Instruct for automated X-ray baggage inspection with Visual Question Answering (VQA).
+AI-powered threat detection for X-ray baggage screening with OpenAI-compatible API for agentic workflows.
 
 ## Overview
 
-This project implements an AI-powered X-ray inspection system for customs and border control using a **separation of concerns** architecture:
+This project provides **two approaches** for automated X-ray baggage inspection:
 
-**VLM (Vision-Language Model):** Focuses on item recognition only
-- Detects prohibited items in X-ray scans
-- Identifies concealment/occlusion
-- Provides location information
+### YOLO Object Detection (Recommended)
 
-**Post-Processing:** Handles declaration comparison and risk assessment
-- Compares detected items with declarations
-- Assesses risk levels (low/medium/high)
-- Generates explainable reasoning
+**Fast, lightweight, production-ready detection**
+
+- **Speed**: 20-100ms per image (real-time)
+- **Size**: 11-47MB models (vs 14GB for VLM)
+- **VRAM**: 2-8GB (vs 16GB+ for VLM)
+- **Training**: 2-4 hours (vs days for VLM)
+- **Use case**: Production screening, edge devices, high-throughput scenarios
+
+**Key features:**
+- Direct bounding box detection from STCray annotations
+- Native Ultralytics or ONNX Runtime backends
+- OpenAI-compatible API for agentic workflows
+- 24 threat categories with confidence scores
+- Occlusion detection for concealed items
+
+### VLM (Vision-Language Model) - Alternative Approach
+
+**Flexible, conversational, multi-task capable**
+
+- Fine-tuned Qwen2.5-VL-7B-Instruct with VQA
+- Natural language explanations and reasoning
+- Structured JSON output with XGrammar
+- Better for research, explanation, and complex queries
+
+---
+
+**Architecture**: Both approaches use a **separation of concerns**:
+- **Detection Model**: Item recognition only (YOLO or VLM)
+- **Post-Processing**: Declaration comparison, risk assessment, policy logic
 
 **Benefits:**
-- Better model accuracy (focused task)
-- Flexible policy updates (no retraining needed)
+- Focused model training (better accuracy)
+- Flexible policy updates (no retraining)
 - Transparent decision-making
 - Easier testing and maintenance
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for detailed system design.
-
-**Key Features:**
-- Phase 1: Single-node training with LoRA (memory efficient)
-- Phase 2: Distributed training with Ray Train (scalable)
-- Fast inference with vLLM (PagedAttention)
-- Complete MLOps: monitoring, drift detection, feedback loops
-- Production-ready REST API
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for system design.
 
 ## Project Structure
 
@@ -66,37 +81,83 @@ xray_scanning_model_finetuning/
 
 ## Quick Start
 
-### 1. Environment Setup
+### YOLO Approach (Recommended)
+
+**1. Install Dependencies**
 
 ```bash
-# Create virtual environment (Python 3.10+)
-bash scripts/setup_venv.sh
-
-# Activate environment
-source .venv/bin/activate
-
-# Verify installation
-python -c "import torch; print(f'PyTorch: {torch.__version__}, CUDA: {torch.cuda.is_available()}')"
+pip install ultralytics torch torchvision fastapi uvicorn pillow pyyaml tqdm
 ```
 
-### 2. Data Preparation
-
-**Recommended: Use STCray dataset (production-grade, 46k images)**
+**2. Download & Process Data**
 
 ```bash
-# Download STCray dataset from HuggingFace
-python data/download_stcray.py --output-dir data/stcray
+# Download STCray dataset (requires HuggingFace access)
+# See docs/STCRAY_DOWNLOAD.md for setup instructions
+huggingface-cli download Naoufel555/STCray-Dataset --local-dir data/stcray_raw
 
+# Process to annotations format
+./scripts/process_stcray_all.sh
+
+# Convert to YOLO format
+python3 data/convert_to_yolo_format.py \
+    --annotations-dir data/stcray_processed \
+    --output-dir data/yolo_dataset \
+    --val-split 0.2
+```
+
+**3. Train Model**
+
+```bash
+# Train YOLOv8n (fastest, 2-3 hours on T4 GPU)
+./scripts/train_yolo_local.sh --model yolov8n.pt --epochs 100
+
+# Or train YOLOv8s (balanced, 4-5 hours)
+./scripts/train_yolo_local.sh --model yolov8s.pt --epochs 100 --export-onnx
+```
+
+**4. Start API Server**
+
+```bash
+./scripts/serve_yolo_api.sh \
+    --model runs/detect/xray_detection/weights/best.pt \
+    --port 8000
+```
+
+**5. Test Detection**
+
+```bash
+# Test on sample images
+python3 scripts/test_yolo_inference.py \
+    --model runs/detect/xray_detection/weights/best.pt \
+    --images data/stcray_raw/STCray_TestSet/Images/Class\ 11_Knife/*.jpg
+```
+
+See [`QUICKSTART.md`](QUICKSTART.md) for detailed guide.
+
+---
+
+### VLM Approach (Alternative)
+
+**1. Environment Setup**
+
+```bash
+# Create virtual environment
+bash scripts/setup_venv.sh
+source .venv/bin/activate
+```
+
+**2. Generate VQA Data**
+
+```bash
 # Generate VQA pairs using Gemini 2.0 Flash (~$9, 1-2 hours)
 export API_KEY="your-api-key"
 ./scripts/generate_vqa_gemini.sh
-
-# This creates:
-# - data/stcray_vqa_train.jsonl (~90k VQA pairs)
-# - data/stcray_vqa_val.jsonl (~48k VQA pairs)
 ```
 
-**Alternative: Use OPIXray dataset (smaller, for testing)**
+**3. Train VLM**
+
+See [`docs/VQA_GENERATOR_VERIFICATION.md`](docs/VQA_GENERATOR_VERIFICATION.md) for VLM training.
 
 ```bash
 # Download OPIXray dataset
