@@ -220,23 +220,33 @@ jobs:
               config['jobs']['yolo_training']['environment']['DATASET'] = dataset
               
               # Adjust timeout and dependencies based on dataset
+              # Also remove unused download jobs to avoid errors
               if dataset == 'luggage_xray':
                   # Luggage X-ray needs to be downloaded from Roboflow
                   config['jobs']['yolo_training']['timeout'] = 7200  # 2 hours
                   config['jobs']['yolo_training']['parent_job_key'] = 'download_luggage_xray'
-                  # Note: download_luggage_xray job is defined in jobs_config_yolo.yaml
+                  # Remove unused download job
+                  if 'download_dataset' in config['jobs']:
+                      del config['jobs']['download_dataset']
                   print(f"✓ Luggage X-ray: Will download from Roboflow")
               elif dataset == 'cargoxray':
                   # CargoXray is in Git LFS, no download needed
                   config['jobs']['yolo_training']['timeout'] = 3600  # 1 hour
                   config['jobs']['yolo_training']['parent_job_key'] = 'setup_environment'  # Skip download
-                  config['jobs']['download_dataset']['timeout'] = 1800  # 30 min (not used but keep for clarity)
+                  # Remove both download jobs (not needed for LFS data)
+                  if 'download_luggage_xray' in config['jobs']:
+                      del config['jobs']['download_luggage_xray']
+                  if 'download_dataset' in config['jobs']:
+                      del config['jobs']['download_dataset']
                   print(f"✓ CargoXray: Using Git LFS (no download job needed)")
               else:  # stcray
                   # STCray needs to be downloaded from HuggingFace
                   config['jobs']['yolo_training']['timeout'] = 14400  # 4 hours
                   config['jobs']['yolo_training']['parent_job_key'] = 'download_dataset'
                   config['jobs']['download_dataset']['timeout'] = 3600  # 1 hour
+                  # Remove unused download job
+                  if 'download_luggage_xray' in config['jobs']:
+                      del config['jobs']['download_luggage_xray']
                   print(f"✓ STCray: Will download from HuggingFace")
               
               print(f"✓ YOLO configuration:")
