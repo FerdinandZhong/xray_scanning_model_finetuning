@@ -9,7 +9,23 @@ This guide provides step-by-step instructions to get started with X-ray VQA fine
 - At least 2x 24GB GPUs for training
 - ~100GB storage for dataset and model
 
-## Step-by-Step Setup
+## Choose Your Approach
+
+### YOLO Detection (Recommended for Production)
+- **Fast**: 20-100ms inference, 2-4 hours training
+- **Lightweight**: 11-47MB models, 2-8GB VRAM
+- **Dataset**: STCray (46k images, 21 classes)
+- **Guide**: See [docs/YOLO_TRAINING.md](docs/YOLO_TRAINING.md)
+
+### VLM Approach (Advanced, Research)
+- **Flexible**: Natural language reasoning
+- **Large**: 14GB model, 16GB+ VRAM, days of training
+- **Dataset**: OPIXray (8k images, 5 classes)
+- **Guide**: Follow this quickstart
+
+---
+
+## Step-by-Step Setup (VLM Approach)
 
 ### 1. Clone/Upload Project to Workspace
 

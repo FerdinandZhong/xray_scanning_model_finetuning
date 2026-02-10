@@ -81,7 +81,48 @@ xray_scanning_model_finetuning/
 
 ## Quick Start
 
-### YOLO Approach (Recommended)
+### 🚀 Deploy to CAI via GitHub Actions (Recommended)
+
+**Fine-tune YOLO on Cloudera AI Workspace (given RolmOCR's 0% accuracy):**
+
+#### Web UI Method
+
+1. Go to **Actions** tab → **Deploy X-ray Detection to CAI**
+2. Click **Run workflow**
+3. Select:
+   - **model_type**: `yolo`
+   - **dataset**: `cargoxray` (quick) or `stcray` (production)
+   - **trigger_jobs**: `true`
+4. Click **Run workflow**
+
+#### CLI Method
+
+```bash
+# Quick baseline: CargoXray (1 hour, 659 images)
+gh workflow run deploy-to-cai.yml \
+  --field model_type=yolo \
+  --field dataset=cargoxray \
+  --field trigger_jobs=true
+
+# Production: STCray (5 hours, 46k images)
+gh workflow run deploy-to-cai.yml \
+  --field model_type=yolo \
+  --field dataset=stcray \
+  --field trigger_jobs=true
+
+# Monitor progress
+gh run watch
+```
+
+📖 **Complete guides:**
+- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** ← **Complete setup with Git LFS**
+- [GitHub Actions Deployment](docs/GITHUB_ACTIONS_DEPLOYMENT.md)
+- [CAI Fine-Tuning Manual](docs/CAI_YOLO_FINETUNING.md)
+- [Git LFS Setup](docs/GIT_LFS_SETUP.md)
+
+---
+
+### Local Development - YOLO Approach
 
 **1. Install Dependencies**
 
@@ -335,18 +376,37 @@ lora:
 - `r=32`: Faster, lower memory, slightly lower quality
 - `r=128`: Higher quality, more memory
 
-## Dataset
+## Datasets
 
-**OPIXray Dataset:**
+**📊 Full Comparison**: See [docs/DATASETS_COMPARISON.md](docs/DATASETS_COMPARISON.md) for detailed analysis
+
+### STCray Baggage Screening (Primary - Production)
+- **46,642 X-ray images** of baggage screening
+- **21 threat categories** (knives, guns, liquids, explosives, etc.)
+- **Bounding box annotations** (JSON format)
+- **Best for**: Production baggage screening systems
+- See [docs/STCRAY_DOWNLOAD.md](docs/STCRAY_DOWNLOAD.md) for setup
+
+### CargoXray (Alternative - Simpler Baseline)
+- **659 X-ray images** of cargo containers (trucks, railcars)
+- **16 object categories** (textiles, auto parts, tools, shoes, etc.)
+- **Clearer images** with larger objects - easier baseline
+- **Best for**: Initial training, testing, transfer learning
+- **Download**: Single curl command (no DVC!) - see [docs/CARGOXRAY_QUICKSTART.md](docs/CARGOXRAY_QUICKSTART.md)
+
+**Quick start:**
+```bash
+curl -L "https://app.roboflow.com/ds/BbQux1Jbmr?key=CmUGXQ0DU6" > roboflow.zip
+unzip roboflow.zip
+python scripts/convert_cargoxray_to_yolo.py
+python training/train_yolo.py --data data/cargoxray_yolo/data.yaml --model yolov8n.pt --epochs 100
+```
+
+### OPIXray (VLM Training)
 - 8,885 X-ray images
-- 5 prohibited item categories:
-  - Folding Knife
-  - Straight Knife
-  - Scissor
-  - Utility Knife
-  - Multi-tool Knife
-- COCO format annotations
-- Occlusion metadata
+- 5 prohibited item categories (knives, scissors, etc.)
+- COCO format annotations with occlusion metadata
+- Used for VLM fine-tuning with VQA format
 
 **VQA Format (Item Recognition Only):**
 ```jsonl
@@ -361,7 +421,7 @@ lora:
 }
 ```
 
-**Note:** The VLM is trained ONLY on item recognition. Declaration comparison happens in post-processing (`inference/postprocess.py`).
+**Note:** Models are trained ONLY on item recognition. Declaration comparison happens in post-processing (`inference/postprocess.py`).
 
 ## Performance Targets
 
