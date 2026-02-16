@@ -86,7 +86,29 @@ jobs:
       VAL_SPLIT: "0.2"
       DATASET: "luggage_xray"  # luggage_xray (recommended), cargoxray, or stcray (overridden by GitHub Actions)
 
-# Note: To deploy the trained model as an API:
-# 1. Use scripts/serve_yolo_api.sh locally
-# 2. Or create a CAI Application for persistent API server
-# 3. The API provides OpenAI-compatible endpoints at /v1/chat/completions
+  # Job 4: Deploy YOLO API as CAI Application
+  # Creates a persistent API endpoint accessible at https://[subdomain].[cai-domain]
+  deploy_yolo_application:
+    name: "Deploy YOLO API Application"
+    description: "Deploy trained YOLO model as persistent CAI Application with exposed endpoints"
+    script: "cai_integration/deploy_yolo_application.py"
+    kernel: "python3"
+    cpu: 2
+    memory: 8
+    timeout: 1800  # 30 minutes
+    parent_job_key: "yolo_training"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+    environment:
+      # CAI credentials (set in GitHub Secrets or CAI Environment Variables)
+      CAI_API_KEY: "${CAI_API_KEY}"
+      CAI_DOMAIN: "${CAI_DOMAIN}"
+      CAI_PROJECT_NAME: "${CAI_PROJECT_NAME}"
+      # Application configuration
+      MODEL_PATH: ""  # Auto-detect latest model if empty
+      APP_SUBDOMAIN: "xray-yolo-api"  # Custom subdomain (optional)
+
+# Note: After deployment, the API will be available at:
+# - Health Check:     https://xray-yolo-api.[cai-domain]/health
+# - API Docs:         https://xray-yolo-api.[cai-domain]/docs
+# - OpenAI API:       https://xray-yolo-api.[cai-domain]/v1/chat/completions
+# - Direct Detection: https://xray-yolo-api.[cai-domain]/v1/detect
