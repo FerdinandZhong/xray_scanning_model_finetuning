@@ -28,11 +28,23 @@ echo "  Host:             $HOST"
 echo "  Port:             $PORT"
 echo ""
 
-# Check if model exists
-if [ ! -f "$MODEL_PATH" ]; then
+# Check if model exists (or is a pre-trained model name)
+PRETRAINED_MODELS="yolov8n.pt yolov8s.pt yolov8m.pt yolov8l.pt yolov8x.pt yolov11n.pt yolov11s.pt yolov11m.pt"
+
+if [ -f "$MODEL_PATH" ]; then
+    echo "✓ Using local model: $MODEL_PATH"
+elif echo "$PRETRAINED_MODELS" | grep -q "$MODEL_PATH"; then
+    echo "✓ Using pre-trained model: $MODEL_PATH"
+    echo "  (Ultralytics will download automatically if needed)"
+else
     echo "ERROR: Model not found at $MODEL_PATH"
-    echo "Available models:"
-    find runs/detect -name "best.pt" -type f 2>/dev/null || echo "  No models found in runs/detect"
+    echo ""
+    echo "Available local models:"
+    find runs/detect -name "best.pt" -type f 2>/dev/null || echo "  No trained models found in runs/detect"
+    echo ""
+    echo "Available pre-trained models:"
+    echo "  yolov8n.pt, yolov8s.pt, yolov8m.pt, yolov8l.pt, yolov8x.pt"
+    echo "  yolov11n.pt, yolov11s.pt, yolov11m.pt"
     exit 1
 fi
 
@@ -54,6 +66,14 @@ python3 -c "import fastapi; import uvicorn; from ultralytics import YOLO; print(
     echo "Installing required packages..."
     pip install --quiet fastapi uvicorn pillow ultralytics
 }
+
+# Pre-download model if it's a pre-trained model name
+if echo "$PRETRAINED_MODELS" | grep -q "$MODEL_PATH"; then
+    echo ""
+    echo "Downloading pre-trained model (if not cached)..."
+    python3 -c "from ultralytics import YOLO; YOLO('$MODEL_PATH'); print('✓ Model ready')"
+    echo "  Cached at: ~/.cache/ultralytics/"
+fi
 
 echo ""
 echo "========================================"
