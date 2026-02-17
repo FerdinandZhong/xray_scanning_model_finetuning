@@ -55,6 +55,7 @@ def main():
     print("  - Test: /home/cdsw/data/stcray/test/")
     print()
     print("Next job: generate_vqa")
+    # Success - exit normally without sys.exit(0) for CAI compatibility
 
 
 if __name__ == "__main__":

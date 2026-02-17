@@ -211,7 +211,10 @@ def main():
     try:
         setup = ProjectSetup()
         success = setup.run()
-        sys.exit(0 if success else 1)
+        # Don't call sys.exit(0) in CAI's interactive environment (Jupyter/IPython)
+        if not success:
+            sys.exit(1)
+        # Exit normally with success
     except KeyboardInterrupt:
         print("\n⚠️  Setup cancelled by user")
         sys.exit(1)

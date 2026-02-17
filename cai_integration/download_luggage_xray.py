@@ -455,4 +455,9 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    exit_code = main()
+    # Don't call sys.exit(0) in CAI's interactive environment (Jupyter/IPython)
+    # as it causes IPython to show a warning and CAI marks job as failed
+    if exit_code != 0:
+        sys.exit(exit_code)
+    # Exit normally with success (no sys.exit call needed)
