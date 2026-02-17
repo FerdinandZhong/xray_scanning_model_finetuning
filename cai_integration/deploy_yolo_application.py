@@ -228,6 +228,11 @@ def main():
         print_status("Example: https://ml-xxx.cloudera.site", "info")
         return 1
     
+    # Ensure domain has https:// scheme
+    if not args.domain.startswith(('http://', 'https://')):
+        args.domain = f"https://{args.domain}"
+        print_status(f"Added https:// scheme to domain: {args.domain}", "info")
+    
     # Find model
     # Pre-trained model names that Ultralytics will auto-download
     PRETRAINED_MODELS = [

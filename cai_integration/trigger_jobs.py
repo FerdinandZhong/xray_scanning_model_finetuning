@@ -36,6 +36,10 @@ class JobRunner:
             print("   Required: CML_HOST, CML_API_KEY")
             sys.exit(1)
 
+        # Ensure CML_HOST has https:// scheme
+        if not self.cml_host.startswith(('http://', 'https://')):
+            self.cml_host = f"https://{self.cml_host}"
+
         self.api_url = f"{self.cml_host.rstrip('/')}/api/v2"
         self.headers = {
             "Content-Type": "application/json",
