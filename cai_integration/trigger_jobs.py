@@ -292,7 +292,8 @@ def main():
         help="Environment variable override (format: KEY=VALUE, can be specified multiple times)"
     )
 
-    args = parser.parse_args()
+    # Use parse_known_args() to ignore Jupyter kernel arguments (e.g., -f kernel.json)
+    args, _ = parser.parse_known_args()
 
     # Parse environment overrides
     env_overrides = {}
@@ -305,7 +306,9 @@ def main():
     try:
         runner = JobRunner()
         success = runner.run(args.project_id, args.jobs_config, args.job, env_overrides)
-        sys.exit(0 if success else 1)
+        # Don't call sys.exit(0) in CAI's interactive environment
+        if not success:
+            sys.exit(1)
     except KeyboardInterrupt:
         print("\n⚠️  Job execution cancelled by user")
         sys.exit(1)

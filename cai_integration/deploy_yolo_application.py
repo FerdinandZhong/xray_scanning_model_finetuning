@@ -208,7 +208,8 @@ def main():
         help='Custom subdomain for application (optional)'
     )
     
-    args = parser.parse_args()
+    # Use parse_known_args() to ignore Jupyter kernel arguments (e.g., -f kernel.json)
+    args, _ = parser.parse_known_args()
     
     print_status("=" * 60, "info")
     print_status("Deploy YOLO Detection API as CAI Application", "info")

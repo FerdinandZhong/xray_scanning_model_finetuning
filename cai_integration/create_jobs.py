@@ -231,12 +231,15 @@ def main():
     parser.add_argument("--project-id", required=True, help="CML project ID")
     parser.add_argument("--config", help="Path to jobs configuration YAML")
 
-    args = parser.parse_args()
+    # Use parse_known_args() to ignore Jupyter kernel arguments (e.g., -f kernel.json)
+    args, _ = parser.parse_known_args()
 
     try:
         manager = JobManager()
         success = manager.run(args.project_id, args.config)
-        sys.exit(0 if success else 1)
+        # Don't call sys.exit(0) in CAI's interactive environment
+        if not success:
+            sys.exit(1)
     except KeyboardInterrupt:
         print("\n⚠️  Job creation cancelled by user")
         sys.exit(1)
