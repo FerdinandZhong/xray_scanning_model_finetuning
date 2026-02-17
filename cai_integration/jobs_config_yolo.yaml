@@ -104,7 +104,7 @@ jobs:
       CAI_DOMAIN: "${CAI_DOMAIN}"
       CAI_PROJECT_NAME: "${CAI_PROJECT_NAME}"
       # Application configuration
-      MODEL_PATH: ""  # Auto-detect latest model if empty
+      MODEL_PATH: ""  # Auto-detect latest trained model, or use pre-trained (e.g., "yolov8n.pt")
       APP_SUBDOMAIN: "xray-yolo-api"  # Custom subdomain (optional)
 
 # Note: After deployment, the API will be available at:

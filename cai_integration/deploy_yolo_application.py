@@ -199,7 +199,7 @@ def main():
         '--model',
         type=str,
         default=os.getenv('MODEL_PATH'),
-        help='Path to trained model (or set MODEL_PATH env var, auto-detects if not set)'
+        help='Model path or pre-trained name (e.g., yolov8n.pt, yolov8s.pt). Auto-detects trained model if not set.'
     )
     parser.add_argument(
         '--subdomain',
@@ -229,6 +229,12 @@ def main():
         return 1
     
     # Find model
+    # Pre-trained model names that Ultralytics will auto-download
+    PRETRAINED_MODELS = [
+        "yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8l.pt", "yolov8x.pt",
+        "yolov11n.pt", "yolov11s.pt", "yolov11m.pt", "yolov11l.pt", "yolov11x.pt"
+    ]
+    
     model_path = args.model
     if not model_path:
         print_status("No model specified, searching for latest trained model...", "info")
@@ -237,16 +243,30 @@ def main():
         if not model_path:
             print_status("Error: No trained model found in runs/detect/", "error")
             print_status("Train a model first or specify --model", "warning")
+            print_status("", "info")
+            print_status("TIP: Use a pre-trained model for quick deployment:", "info")
+            print_status("  python cai_integration/deploy_yolo_application.py --model yolov8n.pt", "info")
             return 1
         
         print_status(f"Found latest model: {model_path}", "success")
+        model_path_str = str(model_path)
     else:
-        model_path = Path(model_path)
-        if not model_path.exists():
-            print_status(f"Error: Model not found: {model_path}", "error")
-            return 1
-    
-    model_path_str = str(model_path)
+        # Check if it's a pre-trained model name
+        if model_path in PRETRAINED_MODELS:
+            print_status(f"Using pre-trained model: {model_path}", "success")
+            print_status("  (Ultralytics will auto-download on first use)", "info")
+            model_path_str = model_path
+        else:
+            # Local model path
+            model_path = Path(model_path)
+            if not model_path.exists():
+                print_status(f"Error: Model not found: {model_path}", "error")
+                print_status("", "info")
+                print_status("Valid options:", "info")
+                print_status("  - Train a model first", "info")
+                print_status("  - Use a pre-trained model: yolov8n.pt, yolov8s.pt, yolov8m.pt", "info")
+                return 1
+            model_path_str = str(model_path)
     
     print()
     print_status("Configuration:", "info")
