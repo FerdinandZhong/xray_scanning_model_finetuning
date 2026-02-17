@@ -9,8 +9,8 @@ Usage:
     python cai_integration/deploy_yolo_application.py
 
 Environment Variables:
-    CAI_API_KEY: Cloudera AI API key (required)
-    CAI_DOMAIN: CAI domain URL (required)
+    CDSW_APIV2_KEY: Cloudera AI API key (required)
+    CDSW_DOMAIN: CAI domain URL (required)
     CAI_PROJECT_NAME: Project name (default: current project)
     MODEL_PATH: Path to trained model (default: latest from runs/detect/)
     APP_SUBDOMAIN: Custom subdomain for application (optional)
@@ -180,14 +180,14 @@ def main():
     parser.add_argument(
         '--api-key',
         type=str,
-        default=os.getenv('CAI_API_KEY'),
-        help='CAI API key (or set CAI_API_KEY env var)'
+        default=os.getenv('CDSW_APIV2_KEY'),
+        help='CAI API key (or set CDSW_APIV2_KEY env var)'
     )
     parser.add_argument(
         '--domain',
         type=str,
-        default=os.getenv('CAI_DOMAIN'),
-        help='CAI domain URL (or set CAI_DOMAIN env var)'
+        default=os.getenv('CDSW_DOMAIN'),
+        help='CAI domain URL (or set CDSW_DOMAIN env var)'
     )
     parser.add_argument(
         '--project',
@@ -218,13 +218,13 @@ def main():
     
     # Validate required parameters
     if not args.api_key:
-        print_status("Error: CAI_API_KEY not set", "error")
-        print_status("Set via --api-key or CAI_API_KEY environment variable", "warning")
+        print_status("Error: CDSW_APIV2_KEY not set", "error")
+        print_status("Set via --api-key or CDSW_APIV2_KEY environment variable", "warning")
         return 1
     
     if not args.domain:
-        print_status("Error: CAI_DOMAIN not set", "error")
-        print_status("Set via --domain or CAI_DOMAIN environment variable", "warning")
+        print_status("Error: CDSW_DOMAIN not set", "error")
+        print_status("Set via --domain or CDSW_DOMAIN environment variable", "warning")
         print_status("Example: https://ml-xxx.cloudera.site", "info")
         return 1
     
