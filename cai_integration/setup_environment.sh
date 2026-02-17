@@ -20,11 +20,17 @@ fi
 
 VENV_PATH="/home/cdsw/.venv"
 
-# Check if we can skip setup (venv exists with transformers and torch installed)
+# Check if we can skip setup (venv exists with required packages installed)
 check_existing_setup() {
     if [ -d "$VENV_PATH" ] && [ -f "$VENV_PATH/bin/python" ]; then
-        # Check if required packages are installed
+        # Check for YOLO requirements (torch + ultralytics)
+        if "$VENV_PATH/bin/python" -c "import torch; from ultralytics import YOLO" 2>/dev/null; then
+            echo "  (YOLO environment detected)"
+            return 0  # Setup exists
+        fi
+        # Check for VLM requirements (torch + transformers)
         if "$VENV_PATH/bin/python" -c "import transformers; import torch" 2>/dev/null; then
+            echo "  (VLM environment detected)"
             return 0  # Setup exists
         fi
     fi
@@ -49,7 +55,13 @@ if [ "$SKIP_SETUP" = "true" ]; then
     # Just verify the installation
     echo "Verifying installation..."
     source "$VENV_PATH/bin/activate"
-    python -c "import torch; import transformers; print(f'PyTorch: {torch.__version__}, Transformers: {transformers.__version__}')"
+    
+    # Try YOLO verification first, fall back to VLM
+    if python -c "import torch; from ultralytics import YOLO" 2>/dev/null; then
+        python -c "import torch; from ultralytics import YOLO; print(f'PyTorch: {torch.__version__}, Ultralytics: OK')"
+    else
+        python -c "import torch; import transformers; print(f'PyTorch: {torch.__version__}, Transformers: {transformers.__version__}')"
+    fi
 
     echo "=============================================================="
     echo "Environment already configured - setup skipped"
@@ -104,25 +116,67 @@ else
     fi
 
     # Install dependencies from requirements.txt
-    echo "Installing dependencies from setup/requirements.txt..."
-    if [ -f "setup/requirements.txt" ]; then
-        if [ "$USE_UV" = "true" ]; then
-            echo "Using uv for ultra-fast installation (10-100x faster than pip)..."
-            uv pip install -r setup/requirements.txt
-        else
-            echo "Using pip (fallback)..."
-            pip install --upgrade pip
-            pip install -r setup/requirements.txt
-        fi
-        echo "✓ All dependencies installed successfully"
+    # Auto-detect YOLO vs VLM based on available requirements files
+    if [ -f "setup/requirements_yolo.txt" ]; then
+        REQUIREMENTS_FILE="setup/requirements_yolo.txt"
+        echo "Installing YOLO dependencies (lightweight, no DeepSpeed/vLLM)..."
+    elif [ -f "setup/requirements.txt" ]; then
+        REQUIREMENTS_FILE="setup/requirements.txt"
+        echo "Installing full VLM dependencies..."
     else
-        echo "❌ Error: setup/requirements.txt not found"
+        echo "❌ Error: No requirements file found"
         exit 1
+    fi
+    
+    if [ "$USE_UV" = "true" ]; then
+        echo "Using uv for ultra-fast installation (10-100x faster than pip)..."
+        
+        # Clear cache if lock errors occurred before
+        if [ -d "$HOME/.cache/uv" ]; then
+            echo "Clearing any stale uv locks..."
+            find "$HOME/.cache/uv" -name "*.lock" -type f -delete 2>/dev/null || true
+        fi
+        
+        # Install with uv, with retry on lock errors
+        MAX_RETRIES=3
+        RETRY_COUNT=0
+        
+        while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+            if uv pip install -r "$REQUIREMENTS_FILE"; then
+                echo "✓ All dependencies installed successfully"
+                break
+            else
+                RETRY_COUNT=$((RETRY_COUNT + 1))
+                if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                    echo "⚠ Installation failed, retrying ($RETRY_COUNT/$MAX_RETRIES)..."
+                    # Clear cache and retry
+                    rm -rf "$HOME/.cache/uv/sdists-v9" 2>/dev/null || true
+                    sleep 5
+                else
+                    echo "⚠ uv installation failed after $MAX_RETRIES attempts"
+                    echo "Falling back to pip..."
+                    pip install --upgrade pip
+                    pip install -r "$REQUIREMENTS_FILE"
+                    echo "✓ All dependencies installed successfully (via pip fallback)"
+                fi
+            fi
+        done
+    else
+        echo "Using pip..."
+        pip install --upgrade pip
+        pip install -r "$REQUIREMENTS_FILE"
+        echo "✓ All dependencies installed successfully"
     fi
 
     # Verify installation
     echo "Verifying installation..."
-    python -c "import torch; import transformers; import peft; print(f'PyTorch: {torch.__version__}, Transformers: {transformers.__version__}, PEFT: {peft.__version__}')"
+    if [ "$REQUIREMENTS_FILE" = "setup/requirements_yolo.txt" ]; then
+        # YOLO-specific verification
+        python -c "import torch; from ultralytics import YOLO; import fastapi; print(f'PyTorch: {torch.__version__}, Ultralytics: OK, FastAPI: OK')"
+    else
+        # Full VLM verification
+        python -c "import torch; import transformers; import peft; print(f'PyTorch: {torch.__version__}, Transformers: {transformers.__version__}, PEFT: {peft.__version__}')"
+    fi
 
     echo "=============================================================="
     echo "Environment setup completed successfully!"
