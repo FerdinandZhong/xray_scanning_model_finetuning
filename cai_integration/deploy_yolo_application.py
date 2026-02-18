@@ -146,7 +146,7 @@ def create_or_update_application(
         "name": app_name,
         "description": "YOLO-based X-ray baggage threat detection API",
         "subdomain": subdomain or "xray-yolo-api",
-        "script": "cai_integration/launch_yolo_application.sh",
+        "script": "cai_integration/launch_yolo_application.py",  # Python wrapper for bash launcher
         "kernel": "python3",
         "cpu": 4,
         "memory": 16,
