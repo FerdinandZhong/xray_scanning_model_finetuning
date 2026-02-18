@@ -83,23 +83,38 @@ def get_cai_client(api_key: str, domain: str) -> requests.Session:
 def get_project_id(client: requests.Session, domain: str, project_name: Optional[str] = None) -> str:
     """Get CAI project ID."""
     url = f"{domain}/api/v2/projects"
-    response = client.get(url)
-    response.raise_for_status()
     
-    projects = response.json()
-    
-    if project_name:
-        # Find by name
-        for project in projects:
-            if project.get("name") == project_name:
-                return project["id"]
-        raise ValueError(f"Project '{project_name}' not found")
-    
-    # Use first project
-    if not projects:
-        raise ValueError("No projects found")
-    
-    return projects[0]["id"]
+    try:
+        response = client.get(url)
+        response.raise_for_status()
+        
+        projects = response.json()
+        
+        # Check if response is a list (expected) or dict (error response)
+        if isinstance(projects, dict):
+            # API returned an error response as dict
+            error_msg = projects.get('message', projects.get('error', str(projects)))
+            raise ValueError(f"API Error: {error_msg}")
+        
+        if project_name:
+            # Find by name
+            for project in projects:
+                if project.get("name") == project_name:
+                    return project["id"]
+            raise ValueError(f"Project '{project_name}' not found. Available projects: {[p.get('name') for p in projects]}")
+        
+        # Use first project
+        if not projects:
+            raise ValueError("No projects found in this workspace")
+        
+        project_id = projects[0].get("id")
+        if not project_id:
+            raise ValueError(f"Project has no ID: {projects[0]}")
+        
+        return str(project_id)
+        
+    except requests.exceptions.RequestException as e:
+        raise ValueError(f"Failed to get projects: {str(e)}")
 
 
 def create_or_update_application(
@@ -342,12 +357,35 @@ def main():
         return 0
         
     except requests.HTTPError as e:
-        print_status(f"HTTP Error: {e.response.status_code}", "error")
+        print_status(f"❌ HTTP Error: {e.response.status_code}", "error")
         print_status(f"Response: {e.response.text}", "error")
+        print()
+        print_status("Common issues:", "info")
+        print("  - Check API key is valid (CDSW_APIV2_KEY)")
+        print("  - Verify domain is correct")
+        print("  - Ensure you have permissions to create applications")
+        return 1
+    
+    except ValueError as e:
+        print_status(f"❌ Error: {str(e)}", "error")
+        print()
+        if "Project" in str(e) and "not found" in str(e):
+            print_status("Available projects:", "info")
+            try:
+                response = client.get(f"{args.domain}/api/v2/projects")
+                projects = response.json()
+                for p in projects:
+                    print(f"  - {p.get('name', 'Unknown')} (id: {p.get('id', 'Unknown')})")
+            except:
+                print("  (Unable to list projects)")
         return 1
     
     except Exception as e:
-        print_status(f"Error: {str(e)}", "error")
+        print_status(f"❌ Unexpected Error: {type(e).__name__}: {str(e)}", "error")
+        import traceback
+        print()
+        print_status("Traceback:", "error")
+        traceback.print_exc()
         return 1
 
 
