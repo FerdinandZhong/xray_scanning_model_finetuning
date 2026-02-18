@@ -130,32 +130,28 @@ os.environ['DEVICE'] = DEVICE
 sys.path.insert(0, os.path.join(project_root, "inference"))
 
 try:
+    import asyncio
     import uvicorn
     from yolo_api_server import app
     
-    # For Jupyter/IPython environments with existing event loops,
-    # we need to use nest_asyncio to allow nested event loops
-    try:
-        import nest_asyncio
-        nest_asyncio.apply()
-        print("✓ Applied nest_asyncio for Jupyter compatibility")
-    except ImportError:
-        print("⚠ nest_asyncio not installed, installing...")
-        import subprocess
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "nest-asyncio"])
-        import nest_asyncio
-        nest_asyncio.apply()
-        print("✓ nest_asyncio installed and applied")
-    
-    print()
-    
-    # Start the server
-    uvicorn.run(
+    # Create uvicorn server config
+    config = uvicorn.Config(
         app,
         host=HOST,
         port=PORT,
         log_level="info"
     )
+    server = uvicorn.Server(config)
+    
+    # Get or create event loop (works in both Jupyter and standalone)
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    # Run server in the existing event loop
+    loop.run_until_complete(server.serve())
     
 except KeyboardInterrupt:
     print("\n\nShutting down server...")
