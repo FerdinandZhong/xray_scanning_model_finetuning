@@ -142,6 +142,15 @@ def create_or_update_application(
     """
     # Application configuration
     app_name = "xray-yolo-detection-api"
+    
+    # Determine GPU configuration from environment
+    use_gpu = os.getenv('USE_GPU', 'true').lower() == 'true'
+    
+    if use_gpu:
+        print_status("GPU Configuration: Enabled (faster inference, requires GPU quota)", "info")
+    else:
+        print_status("GPU Configuration: Disabled (CPU-only, slower but no GPU needed)", "info")
+    
     app_config = {
         "name": app_name,
         "description": "YOLO-based X-ray baggage threat detection API",
@@ -150,14 +159,18 @@ def create_or_update_application(
         "kernel": "python3",
         "cpu": 4,
         "memory": 16,
-        "gpu": 1,
-        "runtime_identifier": "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5",
+        "gpu": 1 if use_gpu else 0,  # 1 GPU if enabled, 0 for CPU-only
+        "runtime_identifier": (
+            "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5" 
+            if use_gpu else 
+            "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+        ),
         "environment": {
             "MODEL_PATH": model_path,
             "BACKEND": "ultralytics",
             "CONF_THRESHOLD": "0.25",
             "IOU_THRESHOLD": "0.45",
-            "DEVICE": "0",
+            "DEVICE": "0" if use_gpu else "cpu",  # GPU device 0 or CPU
             "HOST": "0.0.0.0",
             "PORT": "8080"  # CAI Applications use port 8080
         }
@@ -325,6 +338,8 @@ def main():
     print(f"  Project:    {args.project or '(auto-detect)'}")
     print(f"  Model:      {model_path_str}")
     print(f"  Subdomain:  {args.subdomain or 'xray-yolo-api (default)'}")
+    use_gpu_env = os.getenv('USE_GPU', 'true').lower() == 'true'
+    print(f"  GPU:        {'Enabled (1 GPU)' if use_gpu_env else 'Disabled (CPU-only)'}")
     print()
     
     try:

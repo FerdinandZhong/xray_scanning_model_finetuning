@@ -106,6 +106,7 @@ jobs:
       # Application configuration
       MODEL_PATH: ""  # Auto-detect latest trained model, or use pre-trained (e.g., "yolov8n.pt")
       APP_SUBDOMAIN: "xray-yolo-api"  # Custom subdomain (optional)
+      USE_GPU: "true"  # Set to "false" for CPU-only deployment (slower but no GPU needed)
 
 # Note: After deployment, the API will be available at:
 # - Health Check:     https://xray-yolo-api.[cai-domain]/health
