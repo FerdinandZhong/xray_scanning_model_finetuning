@@ -88,28 +88,37 @@ def get_project_id(client: requests.Session, domain: str, project_name: Optional
         response = client.get(url)
         response.raise_for_status()
         
-        projects = response.json()
+        data = response.json()
         
-        # Check if response is a list (expected) or dict (error response)
-        if isinstance(projects, dict):
-            # API returned an error response as dict
-            error_msg = projects.get('message', projects.get('error', str(projects)))
-            raise ValueError(f"API Error: {error_msg}")
+        # CAI API returns paginated response: {"projects": [...], "next_page_token": "..."}
+        if isinstance(data, dict) and 'projects' in data:
+            projects = data['projects']
+        elif isinstance(data, list):
+            # Fallback for non-paginated response (older API versions)
+            projects = data
+        else:
+            raise ValueError(f"Unexpected API response format: {type(data)}")
+        
+        if not projects:
+            raise ValueError("No projects found in this workspace")
         
         if project_name:
             # Find by name
             for project in projects:
                 if project.get("name") == project_name:
-                    return project["id"]
-            raise ValueError(f"Project '{project_name}' not found. Available projects: {[p.get('name') for p in projects]}")
+                    project_id = project.get("id")
+                    if not project_id:
+                        raise ValueError(f"Project '{project_name}' has no ID")
+                    return str(project_id)
+            
+            # Project not found, show available projects
+            available = [p.get('name', 'Unknown') for p in projects]
+            raise ValueError(f"Project '{project_name}' not found. Available projects: {available}")
         
         # Use first project
-        if not projects:
-            raise ValueError("No projects found in this workspace")
-        
         project_id = projects[0].get("id")
         if not project_id:
-            raise ValueError(f"Project has no ID: {projects[0]}")
+            raise ValueError(f"First project has no ID: {projects[0]}")
         
         return str(project_id)
         
@@ -157,7 +166,15 @@ def create_or_update_application(
     response = client.get(list_url)
     response.raise_for_status()
     
-    existing_apps = response.json()
+    # CAI API may return paginated response for applications too
+    data = response.json()
+    if isinstance(data, dict) and 'applications' in data:
+        existing_apps = data['applications']
+    elif isinstance(data, list):
+        existing_apps = data
+    else:
+        existing_apps = []
+    
     existing_app = None
     
     for app in existing_apps:
@@ -373,7 +390,14 @@ def main():
             print_status("Available projects:", "info")
             try:
                 response = client.get(f"{args.domain}/api/v2/projects")
-                projects = response.json()
+                data = response.json()
+                # Handle paginated response
+                if isinstance(data, dict) and 'projects' in data:
+                    projects = data['projects']
+                elif isinstance(data, list):
+                    projects = data
+                else:
+                    projects = []
                 for p in projects:
                     print(f"  - {p.get('name', 'Unknown')} (id: {p.get('id', 'Unknown')})")
             except:
