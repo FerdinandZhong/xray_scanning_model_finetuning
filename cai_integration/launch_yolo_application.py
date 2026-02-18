@@ -130,31 +130,47 @@ os.environ['DEVICE'] = DEVICE
 sys.path.insert(0, os.path.join(project_root, "inference"))
 
 try:
-    import asyncio
-    import uvicorn
-    from yolo_api_server import app
+    import subprocess
     
-    # Create uvicorn server config
-    config = uvicorn.Config(
-        app,
-        host=HOST,
-        port=PORT,
-        log_level="info"
+    # Build command to run the FastAPI server
+    server_script = os.path.join(project_root, "inference", "yolo_api_server.py")
+    
+    cmd = [
+        sys.executable,
+        server_script,
+        "--model", MODEL_PATH,
+        "--backend", BACKEND,
+        "--conf-threshold", str(CONF_THRESHOLD),
+        "--iou-threshold", str(IOU_THRESHOLD),
+        "--device", DEVICE,
+        "--host", HOST,
+        "--port", str(PORT)
+    ]
+    
+    print(f"Starting server: {' '.join(cmd)}")
+    print()
+    
+    # Run server as subprocess (keeps running in foreground)
+    # This works better in Jupyter/CAI environment than direct uvicorn.run()
+    process = subprocess.Popen(
+        cmd,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        cwd=project_root
     )
-    server = uvicorn.Server(config)
     
-    # Get or create event loop (works in both Jupyter and standalone)
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+    # Wait for server process (keeps application alive)
+    exit_code = process.wait()
     
-    # Run server in the existing event loop
-    loop.run_until_complete(server.serve())
+    if exit_code != 0:
+        print(f"\nERROR: Server exited with code {exit_code}")
+        sys.exit(exit_code)
     
 except KeyboardInterrupt:
     print("\n\nShutting down server...")
+    if 'process' in locals():
+        process.terminate()
+        process.wait()
     sys.exit(0)
     
 except Exception as e:
