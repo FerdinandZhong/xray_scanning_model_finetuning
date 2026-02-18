@@ -9,8 +9,17 @@ import sys
 import subprocess
 
 # Get the project root directory
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# In CAI's Jupyter environment, __file__ is not defined, so use cwd
+try:
+    # Try to use __file__ if available (when run as script)
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+except NameError:
+    # Fallback for Jupyter/IPython environment (CAI Applications)
+    # CAI sets the working directory to the project root
+    project_root = os.getcwd()
+
 os.chdir(project_root)
+print(f"Project root: {project_root}")
 
 # Path to the bash launcher script
 launcher_script = os.path.join(project_root, "cai_integration", "launch_yolo_application.sh")
