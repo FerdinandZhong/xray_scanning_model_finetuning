@@ -186,23 +186,35 @@ def create_or_update_application(
         # Update existing application
         print_status(f"Updating existing application: {app_name}", "info")
         update_url = f"{domain}/api/v2/projects/{project_id}/applications/{existing_app['id']}"
+        
+        print_status(f"  PATCH {update_url}", "info")
         response = client.patch(update_url, json=app_config)
         response.raise_for_status()
+        print_status(f"  ✓ Application updated (status: {response.status_code})", "success")
         
         # Restart application
         restart_url = f"{update_url}/restart"
+        print_status(f"  POST {restart_url}", "info")
         response = client.post(restart_url)
         response.raise_for_status()
+        print_status(f"  ✓ Application restart initiated (status: {response.status_code})", "success")
         
         return existing_app
     
     else:
         # Create new application
         print_status(f"Creating new application: {app_name}", "info")
+        print_status(f"  POST {list_url}", "info")
+        print_status(f"  Config: name={app_config['name']}, subdomain={app_config['subdomain']}", "info")
+        
         response = client.post(list_url, json=app_config)
         response.raise_for_status()
         
-        return response.json()
+        created_app = response.json()
+        print_status(f"  ✓ Application created (status: {response.status_code})", "success")
+        print_status(f"  ✓ Application ID: {created_app.get('id', 'N/A')}", "success")
+        
+        return created_app
 
 
 def main():
@@ -325,6 +337,7 @@ def main():
         
         # Deploy application
         print_status("Deploying YOLO API application...", "info")
+        print()
         app = create_or_update_application(
             client,
             args.domain,
@@ -333,10 +346,26 @@ def main():
             args.subdomain
         )
         
+        # Verify application was created/updated
+        if not app or not app.get('id'):
+            print_status("❌ Application deployment failed: No application ID returned", "error")
+            return 1
+        
         print()
         print_status("=" * 60, "success")
         print_status("✅ Application Deployed Successfully!", "success")
         print_status("=" * 60, "success")
+        print()
+        
+        # Verify application is visible
+        print_status("Verifying application...", "info")
+        verify_url = f"{args.domain}/api/v2/projects/{project_id}/applications/{app['id']}"
+        try:
+            verify_response = client.get(verify_url)
+            verify_response.raise_for_status()
+            print_status(f"✓ Application verified in CAI", "success")
+        except Exception as e:
+            print_status(f"⚠ Warning: Could not verify application: {str(e)}", "warning")
         print()
         
         # Print application details
@@ -366,9 +395,31 @@ def main():
         
         print_status("Next Steps:", "info")
         print("  1. Wait 1-2 minutes for application to start")
-        print("  2. Check application status in CAI UI")
+        print("  2. Check application status in CAI UI: Applications → xray-yolo-detection-api")
         print(f"  3. Test health endpoint: curl {app_url}/health")
         print(f"  4. View API docs: {app_url}/docs")
+        print()
+        
+        # List all applications in project for verification
+        print_status("Applications in this project:", "info")
+        try:
+            list_response = client.get(f"{args.domain}/api/v2/projects/{project_id}/applications")
+            list_data = list_response.json()
+            if isinstance(list_data, dict) and 'applications' in list_data:
+                apps_list = list_data['applications']
+            elif isinstance(list_data, list):
+                apps_list = list_data
+            else:
+                apps_list = []
+            
+            if apps_list:
+                for app_item in apps_list:
+                    status = app_item.get('status', 'unknown')
+                    print(f"  - {app_item.get('name', 'Unknown')} (id: {app_item.get('id', 'N/A')}, status: {status})")
+            else:
+                print("  No applications found (this shouldn't happen)")
+        except Exception as e:
+            print(f"  Could not list applications: {str(e)}")
         print()
         
         return 0
