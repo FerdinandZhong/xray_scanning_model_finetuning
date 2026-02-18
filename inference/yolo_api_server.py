@@ -27,15 +27,15 @@ try:
     HAS_ULTRALYTICS = True
 except ImportError:
     HAS_ULTRALYTICS = False
-    print("Warning: Ultralytics not installed. Only ONNX mode available.")
+    # Don't print warning on import - will warn only if Ultralytics backend is requested
 
-# Try importing ONNX Runtime
+# Try importing ONNX Runtime (optional, only needed for .onnx models)
 try:
     import onnxruntime as ort
     HAS_ONNX = True
 except ImportError:
     HAS_ONNX = False
-    print("Warning: ONNXRuntime not installed. Only Ultralytics mode available.")
+    # Don't print warning on import - will warn only if ONNX backend is requested
 
 
 class ItemDetection(BaseModel):
@@ -207,7 +207,10 @@ class YOLODetectionEngine:
         
         elif self.backend == 'onnx':
             if not HAS_ONNX:
-                raise ImportError("ONNXRuntime not installed. Install with: pip install onnxruntime-gpu")
+                raise ImportError(
+                    "ONNX backend requested but ONNXRuntime not installed.\n"
+                    "Install with: pip install onnxruntime-gpu (for GPU) or pip install onnxruntime (for CPU)"
+                )
             
             providers = ['CUDAExecutionProvider', 'CPUExecutionProvider'] if device != 'cpu' else ['CPUExecutionProvider']
             self.session = ort.InferenceSession(model_path, providers=providers)
