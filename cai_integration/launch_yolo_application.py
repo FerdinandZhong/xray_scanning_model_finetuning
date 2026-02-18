@@ -133,6 +133,22 @@ try:
     import uvicorn
     from yolo_api_server import app
     
+    # For Jupyter/IPython environments with existing event loops,
+    # we need to use nest_asyncio to allow nested event loops
+    try:
+        import nest_asyncio
+        nest_asyncio.apply()
+        print("✓ Applied nest_asyncio for Jupyter compatibility")
+    except ImportError:
+        print("⚠ nest_asyncio not installed, installing...")
+        import subprocess
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "nest-asyncio"])
+        import nest_asyncio
+        nest_asyncio.apply()
+        print("✓ nest_asyncio installed and applied")
+    
+    print()
+    
     # Start the server
     uvicorn.run(
         app,
