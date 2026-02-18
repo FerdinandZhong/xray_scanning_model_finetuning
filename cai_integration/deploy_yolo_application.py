@@ -102,25 +102,27 @@ def get_project_id(client: requests.Session, domain: str, project_name: Optional
         if not projects:
             raise ValueError("No projects found in this workspace")
         
-        if project_name:
-            # Find by name
-            for project in projects:
-                if project.get("name") == project_name:
-                    project_id = project.get("id")
-                    if not project_id:
-                        raise ValueError(f"Project '{project_name}' has no ID")
-                    return str(project_id)
-            
-            # Project not found, show available projects
-            available = [p.get('name', 'Unknown') for p in projects]
-            raise ValueError(f"Project '{project_name}' not found. Available projects: {available}")
+        # If no project name specified, try to detect from environment or default
+        if not project_name:
+            # Try to get project from environment (CAI jobs set this)
+            project_name = os.getenv('CDSW_PROJECT') or os.getenv('PROJECT_OWNER')
+            if not project_name:
+                # Default to xray-scanning-model project
+                project_name = "xray-scanning-model"
+                print_status(f"No project specified, defaulting to: {project_name}", "info")
         
-        # Use first project
-        project_id = projects[0].get("id")
-        if not project_id:
-            raise ValueError(f"First project has no ID: {projects[0]}")
+        # Find by name
+        for project in projects:
+            if project.get("name") == project_name:
+                project_id = project.get("id")
+                if not project_id:
+                    raise ValueError(f"Project '{project_name}' has no ID")
+                print_status(f"Using project: {project_name}", "success")
+                return str(project_id)
         
-        return str(project_id)
+        # Project not found, show available projects
+        available = [p.get('name', 'Unknown') for p in projects]
+        raise ValueError(f"Project '{project_name}' not found. Available projects: {available}")
         
     except requests.exceptions.RequestException as e:
         raise ValueError(f"Failed to get projects: {str(e)}")
