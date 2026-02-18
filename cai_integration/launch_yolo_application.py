@@ -83,17 +83,29 @@ else:
 
 # Check dependencies
 print("Checking dependencies...")
+missing_deps = []
+
 try:
     import fastapi
     import uvicorn
     from ultralytics import YOLO
-    print("✓ All dependencies available")
 except ImportError as e:
-    print(f"ERROR: Missing dependency: {e}")
-    print("Installing required packages...")
+    print(f"⚠ Missing core dependency: {e}")
+    missing_deps.extend(["fastapi", "uvicorn[standard]", "pillow", "ultralytics"])
+
+try:
+    import multipart
+except ImportError:
+    print("⚠ Missing python-multipart (required for file uploads)")
+    missing_deps.append("python-multipart")
+
+if missing_deps:
+    print(f"Installing {len(missing_deps)} missing packages...")
     import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "fastapi", "uvicorn", "pillow", "ultralytics"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet"] + missing_deps)
     print("✓ Dependencies installed")
+else:
+    print("✓ All dependencies available")
 
 print()
 print("=" * 60)
