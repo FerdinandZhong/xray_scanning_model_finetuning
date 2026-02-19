@@ -83,11 +83,26 @@ class ModelComparator:
                 response = requests.post(url, files=files, timeout=30)
                 response.raise_for_status()
             
-            return response.json()
+            result = response.json()
+            
+            # Convert API response format to internal format
+            # API returns: {"items": [...], "total_count": N, "has_concealed_items": bool}
+            # Convert to: {"detections": [...], "num_detections": N}
+            return {
+                "detections": result.get("items", []),
+                "num_detections": result.get("total_count", 0),
+                "threats_detected": [item['name'] for item in result.get("items", []) if self._is_threat(item['name'])],
+                "is_threat": any(self._is_threat(item['name']) for item in result.get("items", []))
+            }
         
         except Exception as e:
             print(f"  ⚠ API call failed for {Path(image_path).name}: {e}")
             return None
+    
+    def _is_threat(self, item_name: str) -> bool:
+        """Check if an item is a threat."""
+        threats = ['knife', 'gun', 'scissors', 'blade', 'weapon', 'explosive', 'dagger']
+        return any(threat in item_name.lower() for threat in threats)
     
     def _map_yolo_to_category(self, detections: List[Dict[str, Any]]) -> str:
         """Map YOLO detections to a single category for comparison."""
@@ -95,8 +110,9 @@ class ModelComparator:
             return "unknown"
         
         # Use highest confidence detection
-        best_detection = max(detections, key=lambda d: d['confidence'])
-        return best_detection['label']
+        # API returns 'name' not 'label'
+        best_detection = max(detections, key=lambda d: d.get('confidence', 0))
+        return best_detection.get('name', best_detection.get('label', 'unknown'))
     
     def test_yolo_on_samples(self):
         """Test YOLO API on the same images used for GPT-4/RolmOCR."""

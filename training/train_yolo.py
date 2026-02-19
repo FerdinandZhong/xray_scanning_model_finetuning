@@ -6,6 +6,12 @@ Supports YOLOv8 and YOLOv11 with X-ray specific augmentations.
 Optional ONNX export for production deployment.
 """
 
+# Fix matplotlib backend for CAI/Jupyter environment
+import os
+if 'MPLBACKEND' in os.environ:
+    # Replace Jupyter inline backend with non-interactive Agg backend
+    os.environ['MPLBACKEND'] = 'Agg'
+
 import argparse
 from pathlib import Path
 import torch
@@ -117,7 +123,7 @@ def train_yolo(
         dfl=1.5,            # DFL loss weight
         
         # Other settings
-        plots=True,         # Save training plots
+        plots=False,        # Disable plots to avoid matplotlib backend issues in CAI
         save=True,          # Save checkpoints
         val=True,           # Validate during training
         cache=False,        # Cache images (set to True if enough RAM)
