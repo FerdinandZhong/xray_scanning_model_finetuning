@@ -230,7 +230,7 @@ CAI Job Pipeline (runs after GitHub Actions)
 
 3. **Configure Environment**
    - Sets MODEL_PATH, CONF_THRESHOLD, IOU_THRESHOLD
-   - Configures port 8080 (CAI standard)
+   - Configures port 8100 (CAI standard)
    - Sets up GPU device
 
 4. **Start FastAPI Server**
@@ -366,7 +366,7 @@ ERROR: Model not found
 ERROR: Application already exists
 → Solution: Script will update existing application
 
-ERROR: Port 8080 already in use
+ERROR: Port 8100 already in use
 → Solution: Stop conflicting application in CAI
 ```
 

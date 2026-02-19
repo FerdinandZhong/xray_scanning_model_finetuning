@@ -172,8 +172,8 @@ def create_or_update_application(
             "CONF_THRESHOLD": "0.25",
             "IOU_THRESHOLD": "0.45",
             "DEVICE": "0" if use_gpu else "cpu",  # GPU device 0 or CPU
-            "HOST": "0.0.0.0",
-            "PORT": "8080"  # CAI Applications use port 8080
+            "HOST": "127.0.0.1",
+            "PORT": "8100"  # CAI Applications use port 8100
         }
     }
     

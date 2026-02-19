@@ -163,8 +163,8 @@ Configure the application behavior via environment variables:
 | `CONF_THRESHOLD` | `0.25` | Confidence threshold (0.0-1.0) |
 | `IOU_THRESHOLD` | `0.45` | IOU threshold for NMS (0.0-1.0) |
 | `DEVICE` | `0` | GPU device (`0`, `cpu`, etc.) |
-| `HOST` | `0.0.0.0` | Server host |
-| `PORT` | `8080` | Server port (CAI uses 8080) |
+| `HOST` | `127.0.0.1` | Server host (CAI internal) |
+| `PORT` | `8100` | Server port (CAI uses 8100) |
 
 ### Resource Allocation
 
