@@ -127,7 +127,7 @@ def train_yolo(
         save=True,          # Save checkpoints
         val=True,           # Validate during training
         cache=False,        # Cache images (set to True if enough RAM)
-        workers=0,          # Disable multiprocessing to avoid shared memory issues in containers
+        workers=8,          # Number of dataloader workers (requires sufficient shared memory)
         
         # Override with any additional kwargs
         **kwargs
