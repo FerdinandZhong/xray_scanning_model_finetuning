@@ -66,14 +66,14 @@ jobs:
   # Job 3: YOLO Training
   # Supports multiple datasets: luggage_xray (recommended), cargoxray (quick), stcray (production)
   # Model selection: yolov8n (fastest), yolov8s (balanced), yolov8m (accurate), yolov11n (latest)
-  # Note: Increased resources to avoid shared memory (shm) issues with PyTorch DataLoader
+  # Note: Requires shared memory configured in CAI project settings (10GB recommended for 8 workers)
   yolo_training:
     name: "Train YOLO Detection Model"
     description: "Train YOLO object detection model on selected dataset (fast, lightweight)"
     script: "cai_integration/yolo_training.py"
     kernel: "python3"
-    cpu: 16  # Increased from 8 for better data loading performance
-    memory: 64  # Increased from 32 to provide more shared memory for PyTorch workers
+    cpu: 8  # 8 cores sufficient for YOLO training with GPU
+    memory: 32  # 32GB sufficient with dedicated shared memory
     gpu: 1  # Single GPU is sufficient for YOLO training
     timeout: 7200  # 2 hours (adjusted by GitHub Actions based on dataset)
     parent_job_key: "download_luggage_xray"  # Updated by GitHub Actions based on dataset
