@@ -80,14 +80,27 @@ jobs:
     parent_job_key: "download_luggage_xray"  # Updated by GitHub Actions based on dataset
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5"
     environment:
+      # Basic Configuration
       MODEL_NAME: "yolov8x.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
-      EPOCHS: "200"  # Max epochs (early stop at 10 epochs without improvement)
-      BATCH_SIZE: "8"  # Reduced from 16 for better gradients (yolov8x)
+      DATASET: "luggage_xray"  # luggage_xray (6,164 imgs), merged_xray (6,626 imgs), cargoxray, stcray
+      EPOCHS: "200"  # Max epochs (early stop if no improvement)
+      BATCH_SIZE: "8"  # Batch size (8 for yolov8x, 16 for yolov8n/s/m)
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"  # Set to "true" to export ONNX for production
       VAL_SPLIT: "0.2"
-      DATASET: "luggage_xray"  # luggage_xray (6,164 imgs), merged_xray (6,626 imgs), cargoxray, stcray
-      # Note: Early stopping (patience=10) is enabled by default in train_yolo.py
+      
+      # Hyperparameters (Optimized for mAP50>0.50)
+      LEARNING_RATE: "0.002"  # Initial learning rate (0.002 for yolov8x, 0.01 for yolov8n)
+      OPTIMIZER: "AdamW"  # Optimizer: SGD, Adam, AdamW (AdamW best for large models)
+      PATIENCE: "10"  # Early stopping: terminate after N epochs without improvement
+      WARMUP_EPOCHS: "5.0"  # Warmup epochs for gradual LR ramp-up
+      
+      # Augmentation Parameters (Moderate settings to prevent confusion)
+      AUG_DEGREES: "10.0"  # Rotation augmentation in degrees (0-30, default: 10)
+      AUG_TRANSLATE: "0.05"  # Translation augmentation (0-0.2, default: 0.05)
+      AUG_SCALE: "0.3"  # Scale augmentation (0-1.0, default: 0.3)
+      AUG_MOSAIC: "0.8"  # Mosaic augmentation probability (0-1.0, default: 0.8)
+      AUG_MIXUP: "0.0"  # Mixup augmentation probability (0-1.0, default: 0.0)
 
   # Job 4: Deploy YOLO API as CAI Application
   # Creates a persistent API endpoint accessible at https://[subdomain].[cai-domain]

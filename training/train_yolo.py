@@ -31,6 +31,15 @@ def train_yolo(
     patience: int = 10,  # Early stopping: terminate if no improvement for 10 epochs
     save_period: int = 10,
     export_onnx: bool = False,
+    # Configurable hyperparameters
+    learning_rate: float = 0.002,
+    optimizer: str = 'AdamW',
+    warmup_epochs: float = 5.0,
+    aug_degrees: float = 10.0,
+    aug_translate: float = 0.05,
+    aug_scale: float = 0.3,
+    aug_mosaic: float = 0.8,
+    aug_mixup: float = 0.0,
     **kwargs
 ):
     """
@@ -96,33 +105,33 @@ def train_yolo(
         patience=patience,  # Early stopping: stop if no improvement for this many epochs
         save_period=save_period,
         
-        # X-ray specific augmentations (REDUCED from aggressive values)
-        # Previous aggressive augmentation may have confused the model
-        degrees=10.0,       # Reduced from 15° (less rotation)
-        translate=0.05,     # Reduced from 0.1 (less translation)
-        scale=0.3,          # Reduced from 0.5 (less scaling)
-        shear=3.0,          # Reduced from 5° (less shearing)
-        perspective=0.0003, # Reduced from 0.0005 (less perspective)
-        flipud=0.5,         # Keep (baggage orientation varies)
-        fliplr=0.5,         # Keep (horizontal flip)
+        # X-ray specific augmentations (CONFIGURABLE via parameters)
+        # Default values optimized to prevent model confusion
+        degrees=aug_degrees,    # Rotation augmentation (default: 10.0)
+        translate=aug_translate,# Translation augmentation (default: 0.05)
+        scale=aug_scale,        # Scale augmentation (default: 0.3)
+        shear=3.0,              # Shear augmentation (fixed: 3.0)
+        perspective=0.0003,     # Perspective augmentation (fixed: 0.0003)
+        flipud=0.5,             # Vertical flip (baggage orientation varies)
+        fliplr=0.5,             # Horizontal flip
         
-        # Mosaic and mixup - REDUCED to prevent overfitting
-        mosaic=0.8,         # Reduced from 1.0 (less mosaic)
-        mixup=0.0,          # Disabled from 0.1 (can confuse on small details)
+        # Mosaic and mixup - CONFIGURABLE to prevent overfitting
+        mosaic=aug_mosaic,      # Mosaic augmentation (default: 0.8)
+        mixup=aug_mixup,        # Mixup augmentation (default: 0.0)
         
-        # Color augmentations - REDUCED (X-ray contrast is important)
-        hsv_h=0.01,         # Reduced from 0.015 (less hue change)
-        hsv_s=0.5,          # Reduced from 0.7 (less saturation change)
-        hsv_v=0.3,          # Reduced from 0.4 (less brightness change)
+        # Color augmentations - FIXED (X-ray contrast is important)
+        hsv_h=0.01,             # HSV-Hue augmentation
+        hsv_s=0.5,              # HSV-Saturation augmentation
+        hsv_v=0.3,              # HSV-Value augmentation
         
-        # IMPROVED: Optimizer settings for better convergence
-        optimizer='AdamW',  # Changed from 'auto' - AdamW better for large models
-        lr0=0.002,          # Reduced from 0.01 (was too high, causing poor convergence)
-        lrf=0.001,          # Reduced from 0.01 (lower final LR for fine-tuning)
-        momentum=0.95,      # Increased from 0.937 (more momentum for escaping local minima)
-        weight_decay=0.0001,# Reduced from 0.0005 (less regularization)
-        warmup_epochs=5.0,  # Increased from 3.0 (more gradual warmup)
-        warmup_momentum=0.9,# Increased from 0.8 (smoother start)
+        # CONFIGURABLE: Optimizer settings for better convergence
+        optimizer=optimizer,    # Optimizer type (default: AdamW)
+        lr0=learning_rate,      # Initial learning rate (default: 0.002)
+        lrf=0.001,              # Final learning rate (fixed: 0.001)
+        momentum=0.95,          # SGD momentum (fixed: 0.95)
+        weight_decay=0.0001,    # Weight decay (fixed: 0.0001)
+        warmup_epochs=warmup_epochs,  # Warmup epochs (default: 5.0)
+        warmup_momentum=0.9,    # Warmup momentum (fixed: 0.9)
         
         # Loss weights
         box=7.5,            # Box loss weight
@@ -309,8 +318,61 @@ def main():
     parser.add_argument(
         '--patience',
         type=int,
-        default=50,
-        help='Early stopping patience in epochs (default: 50)'
+        default=10,
+        help='Early stopping patience in epochs (default: 10)'
+    )
+    
+    # Hyperparameter arguments
+    parser.add_argument(
+        '--learning-rate',
+        type=float,
+        default=0.002,
+        help='Initial learning rate (default: 0.002)'
+    )
+    parser.add_argument(
+        '--optimizer',
+        type=str,
+        default='AdamW',
+        choices=['SGD', 'Adam', 'AdamW', 'auto'],
+        help='Optimizer type (default: AdamW)'
+    )
+    parser.add_argument(
+        '--warmup-epochs',
+        type=float,
+        default=5.0,
+        help='Number of warmup epochs (default: 5.0)'
+    )
+    
+    # Augmentation arguments
+    parser.add_argument(
+        '--aug-degrees',
+        type=float,
+        default=10.0,
+        help='Rotation augmentation in degrees (default: 10.0)'
+    )
+    parser.add_argument(
+        '--aug-translate',
+        type=float,
+        default=0.05,
+        help='Translation augmentation (default: 0.05)'
+    )
+    parser.add_argument(
+        '--aug-scale',
+        type=float,
+        default=0.3,
+        help='Scale augmentation (default: 0.3)'
+    )
+    parser.add_argument(
+        '--aug-mosaic',
+        type=float,
+        default=0.8,
+        help='Mosaic augmentation probability (default: 0.8)'
+    )
+    parser.add_argument(
+        '--aug-mixup',
+        type=float,
+        default=0.0,
+        help='Mixup augmentation probability (default: 0.0)'
     )
     
     # Output arguments
@@ -381,6 +443,15 @@ def main():
         patience=args.patience,
         save_period=args.save_period,
         export_onnx=args.export_onnx,
+        # Configurable hyperparameters
+        learning_rate=args.learning_rate,
+        optimizer=args.optimizer,
+        warmup_epochs=args.warmup_epochs,
+        aug_degrees=args.aug_degrees,
+        aug_translate=args.aug_translate,
+        aug_scale=args.aug_scale,
+        aug_mosaic=args.aug_mosaic,
+        aug_mixup=args.aug_mixup,
     )
 
 

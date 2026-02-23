@@ -13,6 +13,17 @@ Environment Variables:
 - IMG_SIZE: Input image size (default: 640)
 - EXPORT_ONNX: Export to ONNX after training (default: false)
 - VAL_SPLIT: Validation split ratio (default: 0.2, only used for stcray)
+
+Hyperparameter Environment Variables (Optional):
+- LEARNING_RATE: Initial learning rate (default: 0.002)
+- OPTIMIZER: Optimizer type (default: AdamW, options: SGD, Adam, AdamW)
+- PATIENCE: Early stopping patience in epochs (default: 10)
+- WARMUP_EPOCHS: Number of warmup epochs (default: 5.0)
+- AUG_DEGREES: Rotation augmentation degrees (default: 10.0)
+- AUG_TRANSLATE: Translation augmentation (default: 0.05)
+- AUG_SCALE: Scale augmentation (default: 0.3)
+- AUG_MOSAIC: Mosaic augmentation probability (default: 0.8)
+- AUG_MIXUP: Mixup augmentation probability (default: 0.0)
 """
 
 import os
@@ -45,18 +56,37 @@ def main():
     export_onnx = os.getenv("EXPORT_ONNX", "false").lower() == "true"
     val_split = float(os.getenv("VAL_SPLIT", "0.2"))
     
+    # Get hyperparameters from environment (with optimized defaults)
+    learning_rate = float(os.getenv("LEARNING_RATE", "0.002"))
+    optimizer = os.getenv("OPTIMIZER", "AdamW")
+    patience = int(os.getenv("PATIENCE", "10"))
+    warmup_epochs = float(os.getenv("WARMUP_EPOCHS", "5.0"))
+    aug_degrees = float(os.getenv("AUG_DEGREES", "10.0"))
+    aug_translate = float(os.getenv("AUG_TRANSLATE", "0.05"))
+    aug_scale = float(os.getenv("AUG_SCALE", "0.3"))
+    aug_mosaic = float(os.getenv("AUG_MOSAIC", "0.8"))
+    aug_mixup = float(os.getenv("AUG_MIXUP", "0.0"))
+    
     print(f"✓ Using Python: {venv_python}")
     print(f"✓ Working directory: {project_root}")
     print()
     print(f"YOLO Training Configuration:")
     print(f"  Dataset: {dataset}")
     print(f"  Model: {model_name}")
-    print(f"  Epochs: {epochs}")
+    print(f"  Epochs: {epochs} (max, early stop if no improvement)")
     print(f"  Batch Size: {batch_size}")
     print(f"  Image Size: {img_size}")
     if dataset == "stcray":
         print(f"  Validation Split: {val_split}")
     print(f"  Export ONNX: {export_onnx}")
+    print()
+    print(f"Hyperparameters:")
+    print(f"  Optimizer: {optimizer}")
+    print(f"  Learning Rate: {learning_rate}")
+    print(f"  Patience: {patience} epochs")
+    print(f"  Warmup: {warmup_epochs} epochs")
+    print(f"  Augmentation: degrees={aug_degrees}, translate={aug_translate}, scale={aug_scale}")
+    print(f"  Advanced Aug: mosaic={aug_mosaic}, mixup={aug_mixup}")
     print()
     
     # Verify dataset exists based on type
@@ -192,6 +222,16 @@ def main():
         "--device", "0",  # Use first GPU
         "--project", "runs/detect",
         "--name", f"xray_detection_{dataset}",
+        # Configurable hyperparameters
+        "--learning-rate", str(learning_rate),
+        "--optimizer", optimizer,
+        "--patience", str(patience),
+        "--warmup-epochs", str(warmup_epochs),
+        "--aug-degrees", str(aug_degrees),
+        "--aug-translate", str(aug_translate),
+        "--aug-scale", str(aug_scale),
+        "--aug-mosaic", str(aug_mosaic),
+        "--aug-mixup", str(aug_mixup),
     ]
     
     if export_onnx:
