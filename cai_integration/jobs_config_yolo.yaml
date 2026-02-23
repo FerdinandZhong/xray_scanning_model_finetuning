@@ -75,17 +75,17 @@ jobs:
     cpu: 8  # 8 cores sufficient for YOLO training with GPU
     memory: 32  # 32GB sufficient with dedicated shared memory
     gpu: 1  # Single GPU is sufficient for YOLO training
-    timeout: 7200  # 2 hours (adjusted by GitHub Actions based on dataset)
+    timeout: 14400  # 4 hours (increased for 200 epochs + yolov8x)
     parent_job_key: "download_luggage_xray"  # Updated by GitHub Actions based on dataset
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5"
     environment:
-      MODEL_NAME: "yolov8n.pt"  # yolov8n (fastest), yolov8s, yolov8m, yolov11n
-      EPOCHS: "100"
-      BATCH_SIZE: "16"
+      MODEL_NAME: "yolov8x.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
+      EPOCHS: "200"  # Increased from 100 to address mAP50=0.2 plateau
+      BATCH_SIZE: "8"  # Reduced from 16 for better gradients (yolov8x)
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"  # Set to "true" to export ONNX for production
       VAL_SPLIT: "0.2"
-      DATASET: "luggage_xray"  # luggage_xray (recommended), cargoxray, or stcray (overridden by GitHub Actions)
+      DATASET: "luggage_xray"  # luggage_xray (6,164 imgs), merged_xray (6,626 imgs), cargoxray, stcray
 
   # Job 4: Deploy YOLO API as CAI Application
   # Creates a persistent API endpoint accessible at https://[subdomain].[cai-domain]

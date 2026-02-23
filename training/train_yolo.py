@@ -79,6 +79,7 @@ def train_yolo(
     print("="*70 + "\n")
     
     # Train the model with X-ray specific augmentations
+    # Configuration optimized for convergence (addresses mAP50=0.2 plateau issue)
     results = model.train(
         data=data_yaml,
         epochs=epochs,
@@ -90,32 +91,33 @@ def train_yolo(
         patience=patience,
         save_period=save_period,
         
-        # X-ray specific augmentations
-        degrees=15.0,       # Random rotation ±15°
-        translate=0.1,      # Random translation ±10%
-        scale=0.5,          # Random scale ±50%
-        shear=5.0,          # Random shear ±5°
-        perspective=0.0005, # Random perspective
-        flipud=0.5,         # Vertical flip (baggage orientation varies)
-        fliplr=0.5,         # Horizontal flip
+        # X-ray specific augmentations (REDUCED from aggressive values)
+        # Previous aggressive augmentation may have confused the model
+        degrees=10.0,       # Reduced from 15° (less rotation)
+        translate=0.05,     # Reduced from 0.1 (less translation)
+        scale=0.3,          # Reduced from 0.5 (less scaling)
+        shear=3.0,          # Reduced from 5° (less shearing)
+        perspective=0.0003, # Reduced from 0.0005 (less perspective)
+        flipud=0.5,         # Keep (baggage orientation varies)
+        fliplr=0.5,         # Keep (horizontal flip)
         
-        # Mosaic and mixup for better generalization
-        mosaic=1.0,         # Mosaic augmentation probability
-        mixup=0.1,          # Mixup augmentation probability
+        # Mosaic and mixup - REDUCED to prevent overfitting
+        mosaic=0.8,         # Reduced from 1.0 (less mosaic)
+        mixup=0.0,          # Disabled from 0.1 (can confuse on small details)
         
-        # Color augmentations (useful for X-ray contrast variations)
-        hsv_h=0.015,        # HSV-Hue augmentation
-        hsv_s=0.7,          # HSV-Saturation augmentation
-        hsv_v=0.4,          # HSV-Value augmentation
+        # Color augmentations - REDUCED (X-ray contrast is important)
+        hsv_h=0.01,         # Reduced from 0.015 (less hue change)
+        hsv_s=0.5,          # Reduced from 0.7 (less saturation change)
+        hsv_v=0.3,          # Reduced from 0.4 (less brightness change)
         
-        # Optimizer settings
-        optimizer='auto',    # SGD, Adam, or auto
-        lr0=0.01,           # Initial learning rate
-        lrf=0.01,           # Final learning rate (lr0 * lrf)
-        momentum=0.937,     # SGD momentum
-        weight_decay=0.0005,# Weight decay
-        warmup_epochs=3.0,  # Warmup epochs
-        warmup_momentum=0.8,# Warmup momentum
+        # IMPROVED: Optimizer settings for better convergence
+        optimizer='AdamW',  # Changed from 'auto' - AdamW better for large models
+        lr0=0.002,          # Reduced from 0.01 (was too high, causing poor convergence)
+        lrf=0.001,          # Reduced from 0.01 (lower final LR for fine-tuning)
+        momentum=0.95,      # Increased from 0.937 (more momentum for escaping local minima)
+        weight_decay=0.0001,# Reduced from 0.0005 (less regularization)
+        warmup_epochs=5.0,  # Increased from 3.0 (more gradual warmup)
+        warmup_momentum=0.9,# Increased from 0.8 (smoother start)
         
         # Loss weights
         box=7.5,            # Box loss weight
