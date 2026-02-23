@@ -16,7 +16,7 @@ Fast guide to deploy YOLO model as CAI Application.
 - Starts FastAPI server in CAI
 - Loads trained YOLO model
 - Configures endpoints
-- Runs on port 8080 (CAI standard)
+- Runs on port 8100 (CAI standard)
 
 ✅ **Updated Jobs Configuration** (`cai_integration/jobs_config_yolo.yaml`)
 - Added `deploy_yolo_application` job

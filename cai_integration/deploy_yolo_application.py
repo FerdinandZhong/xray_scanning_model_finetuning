@@ -9,8 +9,8 @@ Usage:
     python cai_integration/deploy_yolo_application.py
 
 Environment Variables:
-    CAI_API_KEY: Cloudera AI API key (required)
-    CAI_DOMAIN: CAI domain URL (required)
+    CDSW_APIV2_KEY: Cloudera AI API key (required)
+    CDSW_DOMAIN: CAI domain URL (required)
     CAI_PROJECT_NAME: Project name (default: current project)
     MODEL_PATH: Path to trained model (default: latest from runs/detect/)
     APP_SUBDOMAIN: Custom subdomain for application (optional)
@@ -83,23 +83,49 @@ def get_cai_client(api_key: str, domain: str) -> requests.Session:
 def get_project_id(client: requests.Session, domain: str, project_name: Optional[str] = None) -> str:
     """Get CAI project ID."""
     url = f"{domain}/api/v2/projects"
-    response = client.get(url)
-    response.raise_for_status()
     
-    projects = response.json()
-    
-    if project_name:
+    try:
+        response = client.get(url)
+        response.raise_for_status()
+        
+        data = response.json()
+        
+        # CAI API returns paginated response: {"projects": [...], "next_page_token": "..."}
+        if isinstance(data, dict) and 'projects' in data:
+            projects = data['projects']
+        elif isinstance(data, list):
+            # Fallback for non-paginated response (older API versions)
+            projects = data
+        else:
+            raise ValueError(f"Unexpected API response format: {type(data)}")
+        
+        if not projects:
+            raise ValueError("No projects found in this workspace")
+        
+        # If no project name specified, try to detect from environment or default
+        if not project_name:
+            # Try to get project from environment (CAI jobs set this)
+            project_name = os.getenv('CDSW_PROJECT') or os.getenv('PROJECT_OWNER')
+            if not project_name:
+                # Default to xray-scanning-model project
+                project_name = "xray-scanning-model"
+                print_status(f"No project specified, defaulting to: {project_name}", "info")
+        
         # Find by name
         for project in projects:
             if project.get("name") == project_name:
-                return project["id"]
-        raise ValueError(f"Project '{project_name}' not found")
-    
-    # Use first project
-    if not projects:
-        raise ValueError("No projects found")
-    
-    return projects[0]["id"]
+                project_id = project.get("id")
+                if not project_id:
+                    raise ValueError(f"Project '{project_name}' has no ID")
+                print_status(f"Using project: {project_name}", "success")
+                return str(project_id)
+        
+        # Project not found, show available projects
+        available = [p.get('name', 'Unknown') for p in projects]
+        raise ValueError(f"Project '{project_name}' not found. Available projects: {available}")
+        
+    except requests.exceptions.RequestException as e:
+        raise ValueError(f"Failed to get projects: {str(e)}")
 
 
 def create_or_update_application(
@@ -116,24 +142,38 @@ def create_or_update_application(
     """
     # Application configuration
     app_name = "xray-yolo-detection-api"
+    
+    # Determine GPU configuration from environment
+    use_gpu = os.getenv('USE_GPU', 'true').lower() == 'true'
+    
+    if use_gpu:
+        print_status("GPU Configuration: Enabled (faster inference, requires GPU quota)", "info")
+    else:
+        print_status("GPU Configuration: Disabled (CPU-only, slower but no GPU needed)", "info")
+    
     app_config = {
         "name": app_name,
         "description": "YOLO-based X-ray baggage threat detection API",
         "subdomain": subdomain or "xray-yolo-api",
-        "script": "cai_integration/launch_yolo_application.sh",
+        "script": "cai_integration/launch_yolo_application.py",  # Python wrapper for bash launcher
         "kernel": "python3",
         "cpu": 4,
         "memory": 16,
-        "gpu": 1,
-        "runtime_identifier": "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5",
+        "gpu": 1 if use_gpu else 0,  # 1 GPU if enabled, 0 for CPU-only
+        "bypass_authentication": True,  # Allow unauthenticated API access
+        "runtime_identifier": (
+            "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5" 
+            if use_gpu else 
+            "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+        ),
         "environment": {
             "MODEL_PATH": model_path,
             "BACKEND": "ultralytics",
             "CONF_THRESHOLD": "0.25",
             "IOU_THRESHOLD": "0.45",
-            "DEVICE": "0",
-            "HOST": "0.0.0.0",
-            "PORT": "8080"  # CAI Applications use port 8080
+            "DEVICE": "0" if use_gpu else "cpu",  # GPU device 0 or CPU
+            "HOST": "127.0.0.1",
+            "PORT": "8100"  # CAI Applications use port 8100
         }
     }
     
@@ -142,7 +182,15 @@ def create_or_update_application(
     response = client.get(list_url)
     response.raise_for_status()
     
-    existing_apps = response.json()
+    # CAI API may return paginated response for applications too
+    data = response.json()
+    if isinstance(data, dict) and 'applications' in data:
+        existing_apps = data['applications']
+    elif isinstance(data, list):
+        existing_apps = data
+    else:
+        existing_apps = []
+    
     existing_app = None
     
     for app in existing_apps:
@@ -154,23 +202,35 @@ def create_or_update_application(
         # Update existing application
         print_status(f"Updating existing application: {app_name}", "info")
         update_url = f"{domain}/api/v2/projects/{project_id}/applications/{existing_app['id']}"
+        
+        print_status(f"  PATCH {update_url}", "info")
         response = client.patch(update_url, json=app_config)
         response.raise_for_status()
+        print_status(f"  ✓ Application updated (status: {response.status_code})", "success")
         
         # Restart application
         restart_url = f"{update_url}/restart"
+        print_status(f"  POST {restart_url}", "info")
         response = client.post(restart_url)
         response.raise_for_status()
+        print_status(f"  ✓ Application restart initiated (status: {response.status_code})", "success")
         
         return existing_app
     
     else:
         # Create new application
         print_status(f"Creating new application: {app_name}", "info")
+        print_status(f"  POST {list_url}", "info")
+        print_status(f"  Config: name={app_config['name']}, subdomain={app_config['subdomain']}", "info")
+        
         response = client.post(list_url, json=app_config)
         response.raise_for_status()
         
-        return response.json()
+        created_app = response.json()
+        print_status(f"  ✓ Application created (status: {response.status_code})", "success")
+        print_status(f"  ✓ Application ID: {created_app.get('id', 'N/A')}", "success")
+        
+        return created_app
 
 
 def main():
@@ -180,14 +240,14 @@ def main():
     parser.add_argument(
         '--api-key',
         type=str,
-        default=os.getenv('CAI_API_KEY'),
-        help='CAI API key (or set CAI_API_KEY env var)'
+        default=os.getenv('CDSW_APIV2_KEY'),
+        help='CAI API key (or set CDSW_APIV2_KEY env var)'
     )
     parser.add_argument(
         '--domain',
         type=str,
-        default=os.getenv('CAI_DOMAIN'),
-        help='CAI domain URL (or set CAI_DOMAIN env var)'
+        default=os.getenv('CDSW_DOMAIN'),
+        help='CAI domain URL (or set CDSW_DOMAIN env var)'
     )
     parser.add_argument(
         '--project',
@@ -199,7 +259,7 @@ def main():
         '--model',
         type=str,
         default=os.getenv('MODEL_PATH'),
-        help='Path to trained model (or set MODEL_PATH env var, auto-detects if not set)'
+        help='Model path or pre-trained name (e.g., yolov8n.pt, yolov8s.pt). Auto-detects trained model if not set.'
     )
     parser.add_argument(
         '--subdomain',
@@ -208,7 +268,8 @@ def main():
         help='Custom subdomain for application (optional)'
     )
     
-    args = parser.parse_args()
+    # Use parse_known_args() to ignore Jupyter kernel arguments (e.g., -f kernel.json)
+    args, _ = parser.parse_known_args()
     
     print_status("=" * 60, "info")
     print_status("Deploy YOLO Detection API as CAI Application", "info")
@@ -217,17 +278,28 @@ def main():
     
     # Validate required parameters
     if not args.api_key:
-        print_status("Error: CAI_API_KEY not set", "error")
-        print_status("Set via --api-key or CAI_API_KEY environment variable", "warning")
+        print_status("Error: CDSW_APIV2_KEY not set", "error")
+        print_status("Set via --api-key or CDSW_APIV2_KEY environment variable", "warning")
         return 1
     
     if not args.domain:
-        print_status("Error: CAI_DOMAIN not set", "error")
-        print_status("Set via --domain or CAI_DOMAIN environment variable", "warning")
+        print_status("Error: CDSW_DOMAIN not set", "error")
+        print_status("Set via --domain or CDSW_DOMAIN environment variable", "warning")
         print_status("Example: https://ml-xxx.cloudera.site", "info")
         return 1
     
+    # Ensure domain has https:// scheme
+    if not args.domain.startswith(('http://', 'https://')):
+        args.domain = f"https://{args.domain}"
+        print_status(f"Added https:// scheme to domain: {args.domain}", "info")
+    
     # Find model
+    # Pre-trained model names that Ultralytics will auto-download
+    PRETRAINED_MODELS = [
+        "yolov8n.pt", "yolov8s.pt", "yolov8m.pt", "yolov8l.pt", "yolov8x.pt",
+        "yolov11n.pt", "yolov11s.pt", "yolov11m.pt", "yolov11l.pt", "yolov11x.pt"
+    ]
+    
     model_path = args.model
     if not model_path:
         print_status("No model specified, searching for latest trained model...", "info")
@@ -236,16 +308,30 @@ def main():
         if not model_path:
             print_status("Error: No trained model found in runs/detect/", "error")
             print_status("Train a model first or specify --model", "warning")
+            print_status("", "info")
+            print_status("TIP: Use a pre-trained model for quick deployment:", "info")
+            print_status("  python cai_integration/deploy_yolo_application.py --model yolov8n.pt", "info")
             return 1
         
         print_status(f"Found latest model: {model_path}", "success")
+        model_path_str = str(model_path)
     else:
-        model_path = Path(model_path)
-        if not model_path.exists():
-            print_status(f"Error: Model not found: {model_path}", "error")
-            return 1
-    
-    model_path_str = str(model_path)
+        # Check if it's a pre-trained model name
+        if model_path in PRETRAINED_MODELS:
+            print_status(f"Using pre-trained model: {model_path}", "success")
+            print_status("  (Ultralytics will auto-download on first use)", "info")
+            model_path_str = model_path
+        else:
+            # Local model path
+            model_path = Path(model_path)
+            if not model_path.exists():
+                print_status(f"Error: Model not found: {model_path}", "error")
+                print_status("", "info")
+                print_status("Valid options:", "info")
+                print_status("  - Train a model first", "info")
+                print_status("  - Use a pre-trained model: yolov8n.pt, yolov8s.pt, yolov8m.pt", "info")
+                return 1
+            model_path_str = str(model_path)
     
     print()
     print_status("Configuration:", "info")
@@ -253,6 +339,8 @@ def main():
     print(f"  Project:    {args.project or '(auto-detect)'}")
     print(f"  Model:      {model_path_str}")
     print(f"  Subdomain:  {args.subdomain or 'xray-yolo-api (default)'}")
+    use_gpu_env = os.getenv('USE_GPU', 'true').lower() == 'true'
+    print(f"  GPU:        {'Enabled (1 GPU)' if use_gpu_env else 'Disabled (CPU-only)'}")
     print()
     
     try:
@@ -267,6 +355,7 @@ def main():
         
         # Deploy application
         print_status("Deploying YOLO API application...", "info")
+        print()
         app = create_or_update_application(
             client,
             args.domain,
@@ -275,10 +364,26 @@ def main():
             args.subdomain
         )
         
+        # Verify application was created/updated
+        if not app or not app.get('id'):
+            print_status("❌ Application deployment failed: No application ID returned", "error")
+            return 1
+        
         print()
         print_status("=" * 60, "success")
         print_status("✅ Application Deployed Successfully!", "success")
         print_status("=" * 60, "success")
+        print()
+        
+        # Verify application is visible
+        print_status("Verifying application...", "info")
+        verify_url = f"{args.domain}/api/v2/projects/{project_id}/applications/{app['id']}"
+        try:
+            verify_response = client.get(verify_url)
+            verify_response.raise_for_status()
+            print_status(f"✓ Application verified in CAI", "success")
+        except Exception as e:
+            print_status(f"⚠ Warning: Could not verify application: {str(e)}", "warning")
         print()
         
         # Print application details
@@ -308,22 +413,79 @@ def main():
         
         print_status("Next Steps:", "info")
         print("  1. Wait 1-2 minutes for application to start")
-        print("  2. Check application status in CAI UI")
+        print("  2. Check application status in CAI UI: Applications → xray-yolo-detection-api")
         print(f"  3. Test health endpoint: curl {app_url}/health")
         print(f"  4. View API docs: {app_url}/docs")
+        print()
+        
+        # List all applications in project for verification
+        print_status("Applications in this project:", "info")
+        try:
+            list_response = client.get(f"{args.domain}/api/v2/projects/{project_id}/applications")
+            list_data = list_response.json()
+            if isinstance(list_data, dict) and 'applications' in list_data:
+                apps_list = list_data['applications']
+            elif isinstance(list_data, list):
+                apps_list = list_data
+            else:
+                apps_list = []
+            
+            if apps_list:
+                for app_item in apps_list:
+                    status = app_item.get('status', 'unknown')
+                    print(f"  - {app_item.get('name', 'Unknown')} (id: {app_item.get('id', 'N/A')}, status: {status})")
+            else:
+                print("  No applications found (this shouldn't happen)")
+        except Exception as e:
+            print(f"  Could not list applications: {str(e)}")
         print()
         
         return 0
         
     except requests.HTTPError as e:
-        print_status(f"HTTP Error: {e.response.status_code}", "error")
+        print_status(f"❌ HTTP Error: {e.response.status_code}", "error")
         print_status(f"Response: {e.response.text}", "error")
+        print()
+        print_status("Common issues:", "info")
+        print("  - Check API key is valid (CDSW_APIV2_KEY)")
+        print("  - Verify domain is correct")
+        print("  - Ensure you have permissions to create applications")
+        return 1
+    
+    except ValueError as e:
+        print_status(f"❌ Error: {str(e)}", "error")
+        print()
+        if "Project" in str(e) and "not found" in str(e):
+            print_status("Available projects:", "info")
+            try:
+                response = client.get(f"{args.domain}/api/v2/projects")
+                data = response.json()
+                # Handle paginated response
+                if isinstance(data, dict) and 'projects' in data:
+                    projects = data['projects']
+                elif isinstance(data, list):
+                    projects = data
+                else:
+                    projects = []
+                for p in projects:
+                    print(f"  - {p.get('name', 'Unknown')} (id: {p.get('id', 'Unknown')})")
+            except:
+                print("  (Unable to list projects)")
         return 1
     
     except Exception as e:
-        print_status(f"Error: {str(e)}", "error")
+        print_status(f"❌ Unexpected Error: {type(e).__name__}: {str(e)}", "error")
+        import traceback
+        print()
+        print_status("Traceback:", "error")
+        traceback.print_exc()
         return 1
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    exit_code = main()
+    # Don't call sys.exit(0) in CAI's interactive environment (Jupyter/IPython)
+    # as it causes IPython to show a warning and CAI marks job as failed
+    if exit_code != 0:
+        sys.exit(exit_code)
+    # Exit normally with success (no sys.exit call needed)

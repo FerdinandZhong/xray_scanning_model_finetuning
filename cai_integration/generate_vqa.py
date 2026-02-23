@@ -145,6 +145,7 @@ def main():
     print(f"  - Validation: /home/cdsw/data/stcray_vqa_val.jsonl")
     print()
     print("Next job: finetune_model")
+    # Success - exit normally without sys.exit(0) for CAI compatibility
 
 
 if __name__ == "__main__":

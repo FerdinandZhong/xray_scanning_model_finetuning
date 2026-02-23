@@ -66,25 +66,41 @@ jobs:
   # Job 3: YOLO Training
   # Supports multiple datasets: luggage_xray (recommended), cargoxray (quick), stcray (production)
   # Model selection: yolov8n (fastest), yolov8s (balanced), yolov8m (accurate), yolov11n (latest)
+  # Early stopping: Training terminates if no mAP50 improvement for 10 consecutive epochs
+  # Note: Requires shared memory configured in CAI project settings (10GB recommended for 8 workers)
   yolo_training:
     name: "Train YOLO Detection Model"
-    description: "Train YOLO object detection model on selected dataset (fast, lightweight)"
+    description: "Train YOLO object detection model with early stopping (terminates after 10 epochs without improvement)"
     script: "cai_integration/yolo_training.py"
     kernel: "python3"
-    cpu: 8
-    memory: 32
+    cpu: 8  # 8 cores sufficient for YOLO training with GPU
+    memory: 32  # 32GB sufficient with dedicated shared memory
     gpu: 1  # Single GPU is sufficient for YOLO training
-    timeout: 7200  # 2 hours (adjusted by GitHub Actions based on dataset)
+    timeout: 14400  # 4 hours (increased for 200 epochs + yolov8x)
     parent_job_key: "download_luggage_xray"  # Updated by GitHub Actions based on dataset
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5"
     environment:
-      MODEL_NAME: "yolov8n.pt"  # yolov8n (fastest), yolov8s, yolov8m, yolov11n
-      EPOCHS: "100"
-      BATCH_SIZE: "16"
+      # Basic Configuration
+      MODEL_NAME: "yolov8x.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
+      DATASET: "luggage_xray"  # luggage_xray (6,164 imgs), merged_xray (6,626 imgs), cargoxray, stcray
+      EPOCHS: "200"  # Max epochs (early stop if no improvement)
+      BATCH_SIZE: "8"  # Batch size (8 for yolov8x, 16 for yolov8n/s/m)
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"  # Set to "true" to export ONNX for production
       VAL_SPLIT: "0.2"
-      DATASET: "luggage_xray"  # luggage_xray (recommended), cargoxray, or stcray (overridden by GitHub Actions)
+      
+      # Hyperparameters (Optimized for mAP50>0.50)
+      LEARNING_RATE: "0.002"  # Initial learning rate (0.002 for yolov8x, 0.01 for yolov8n)
+      OPTIMIZER: "AdamW"  # Optimizer: SGD, Adam, AdamW (AdamW best for large models)
+      PATIENCE: "10"  # Early stopping: terminate after N epochs without improvement
+      WARMUP_EPOCHS: "5.0"  # Warmup epochs for gradual LR ramp-up
+      
+      # Augmentation Parameters (Moderate settings to prevent confusion)
+      AUG_DEGREES: "10.0"  # Rotation augmentation in degrees (0-30, default: 10)
+      AUG_TRANSLATE: "0.05"  # Translation augmentation (0-0.2, default: 0.05)
+      AUG_SCALE: "0.3"  # Scale augmentation (0-1.0, default: 0.3)
+      AUG_MOSAIC: "0.8"  # Mosaic augmentation probability (0-1.0, default: 0.8)
+      AUG_MIXUP: "0.0"  # Mixup augmentation probability (0-1.0, default: 0.0)
 
   # Job 4: Deploy YOLO API as CAI Application
   # Creates a persistent API endpoint accessible at https://[subdomain].[cai-domain]
@@ -102,10 +118,11 @@ jobs:
       # CAI credentials (set in GitHub Secrets or CAI Environment Variables)
       CAI_API_KEY: "${CAI_API_KEY}"
       CAI_DOMAIN: "${CAI_DOMAIN}"
-      CAI_PROJECT_NAME: "${CAI_PROJECT_NAME}"
+      CAI_PROJECT_NAME: "xray-scanning-model"  # Deploy to this project (matches setup_project.py)
       # Application configuration
-      MODEL_PATH: ""  # Auto-detect latest model if empty
+      MODEL_PATH: ""  # Auto-detect latest trained model, or use pre-trained (e.g., "yolov8n.pt")
       APP_SUBDOMAIN: "xray-yolo-api"  # Custom subdomain (optional)
+      USE_GPU: "true"  # Set to "false" for CPU-only deployment (slower but no GPU needed)
 
 # Note: After deployment, the API will be available at:
 # - Health Check:     https://xray-yolo-api.[cai-domain]/health

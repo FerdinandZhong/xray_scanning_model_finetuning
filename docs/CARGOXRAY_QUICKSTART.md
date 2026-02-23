@@ -124,7 +124,7 @@ python scripts/test_yolo_inference.py \
 # Start OpenAI-compatible API server
 python inference/yolo_api_server.py \
   --model runs/detect/cargoxray_v1/weights/best.pt \
-  --host 0.0.0.0 \
+  --host 127.0.0.1 \
   --port 8000
 ```
 

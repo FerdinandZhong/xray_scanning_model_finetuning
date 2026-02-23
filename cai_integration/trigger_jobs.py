@@ -36,6 +36,10 @@ class JobRunner:
             print("   Required: CML_HOST, CML_API_KEY")
             sys.exit(1)
 
+        # Ensure CML_HOST has https:// scheme
+        if not self.cml_host.startswith(('http://', 'https://')):
+            self.cml_host = f"https://{self.cml_host}"
+
         self.api_url = f"{self.cml_host.rstrip('/')}/api/v2"
         self.headers = {
             "Content-Type": "application/json",
@@ -292,7 +296,8 @@ def main():
         help="Environment variable override (format: KEY=VALUE, can be specified multiple times)"
     )
 
-    args = parser.parse_args()
+    # Use parse_known_args() to ignore Jupyter kernel arguments (e.g., -f kernel.json)
+    args, _ = parser.parse_known_args()
 
     # Parse environment overrides
     env_overrides = {}
@@ -305,7 +310,9 @@ def main():
     try:
         runner = JobRunner()
         success = runner.run(args.project_id, args.jobs_config, args.job, env_overrides)
-        sys.exit(0 if success else 1)
+        # Don't call sys.exit(0) in CAI's interactive environment
+        if not success:
+            sys.exit(1)
     except KeyboardInterrupt:
         print("\n⚠️  Job execution cancelled by user")
         sys.exit(1)

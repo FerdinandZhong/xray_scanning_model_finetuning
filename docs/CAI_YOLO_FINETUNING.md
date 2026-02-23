@@ -332,7 +332,7 @@ scp cai:/home/cdsw/runs/detect/yolo_v1/weights/best.pt models/
 # Start API server
 python inference/yolo_api_server.py \
   --model models/best.pt \
-  --host 0.0.0.0 \
+  --host 127.0.0.1 \
   --port 8000
 ```
 

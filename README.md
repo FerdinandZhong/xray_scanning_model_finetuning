@@ -608,6 +608,13 @@ For issues and questions:
 - **[`VERIFICATION_SUMMARY.md`](VERIFICATION_SUMMARY.md)** - LLM VQA generator verification summary
 - [`docs/VQA_GENERATOR_VERIFICATION.md`](docs/VQA_GENERATOR_VERIFICATION.md) - Detailed verification report with usage examples
 
+### Testing & API
+- **[`docs/API_TESTING_GUIDE.md`](docs/API_TESTING_GUIDE.md)** - 🧪 Comprehensive API testing guide with curl and Python examples
+- **[`docs/MODEL_COMPARISON_GUIDE.md`](docs/MODEL_COMPARISON_GUIDE.md)** - 📊 Compare YOLO vs GPT-4 vs RolmOCR performance
+- **[`scripts/test_deployed_yolo_api.py`](scripts/test_deployed_yolo_api.py)** - Automated API endpoint testing script
+- **[`scripts/compare_models_with_yolo.py`](scripts/compare_models_with_yolo.py)** - Model comparison and benchmarking script
+- [`API_QUICKSTART.md`](API_QUICKSTART.md) - Quick start for API testing
+
 ### Guides & References
 - **[`docs/LOCAL_VQA_SETUP.md`](docs/LOCAL_VQA_SETUP.md)** - 🚀 Quick setup for local VQA generation (minimal dependencies)
 - **[`docs/MACOS_LONG_RUNNING.md`](docs/MACOS_LONG_RUNNING.md)** - 🍎 Prevent MacBook sleep during VQA generation

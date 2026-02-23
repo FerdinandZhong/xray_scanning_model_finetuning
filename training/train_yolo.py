@@ -6,6 +6,12 @@ Supports YOLOv8 and YOLOv11 with X-ray specific augmentations.
 Optional ONNX export for production deployment.
 """
 
+# Fix matplotlib backend for CAI/Jupyter environment
+import os
+if 'MPLBACKEND' in os.environ:
+    # Replace Jupyter inline backend with non-interactive Agg backend
+    os.environ['MPLBACKEND'] = 'Agg'
+
 import argparse
 from pathlib import Path
 import torch
@@ -22,13 +28,26 @@ def train_yolo(
     device: str = '0',
     project: str = 'runs/detect',
     name: str = 'xray_detection',
-    patience: int = 50,
+    patience: int = 10,  # Early stopping: terminate if no improvement for 10 epochs
     save_period: int = 10,
     export_onnx: bool = False,
+    # Configurable hyperparameters
+    learning_rate: float = 0.002,
+    optimizer: str = 'AdamW',
+    warmup_epochs: float = 5.0,
+    aug_degrees: float = 10.0,
+    aug_translate: float = 0.05,
+    aug_scale: float = 0.3,
+    aug_mosaic: float = 0.8,
+    aug_mixup: float = 0.0,
     **kwargs
 ):
     """
-    Train YOLO model on X-ray baggage dataset.
+    Train YOLO model on X-ray baggage dataset with early stopping.
+    
+    Early Stopping: Training automatically terminates if validation mAP50 
+    doesn't improve for 'patience' consecutive epochs (default: 10).
+    Best model checkpoint is saved before termination.
     
     Args:
         data_yaml: Path to data.yaml configuration file
@@ -73,6 +92,8 @@ def train_yolo(
     print("="*70 + "\n")
     
     # Train the model with X-ray specific augmentations
+    # Configuration optimized for convergence (addresses mAP50=0.2 plateau issue)
+    # Early stopping enabled: training terminates if no mAP50 improvement for 10 epochs
     results = model.train(
         data=data_yaml,
         epochs=epochs,
@@ -81,35 +102,36 @@ def train_yolo(
         device=device,
         project=project,
         name=name,
-        patience=patience,
+        patience=patience,  # Early stopping: stop if no improvement for this many epochs
         save_period=save_period,
         
-        # X-ray specific augmentations
-        degrees=15.0,       # Random rotation ±15°
-        translate=0.1,      # Random translation ±10%
-        scale=0.5,          # Random scale ±50%
-        shear=5.0,          # Random shear ±5°
-        perspective=0.0005, # Random perspective
-        flipud=0.5,         # Vertical flip (baggage orientation varies)
-        fliplr=0.5,         # Horizontal flip
+        # X-ray specific augmentations (CONFIGURABLE via parameters)
+        # Default values optimized to prevent model confusion
+        degrees=aug_degrees,    # Rotation augmentation (default: 10.0)
+        translate=aug_translate,# Translation augmentation (default: 0.05)
+        scale=aug_scale,        # Scale augmentation (default: 0.3)
+        shear=3.0,              # Shear augmentation (fixed: 3.0)
+        perspective=0.0003,     # Perspective augmentation (fixed: 0.0003)
+        flipud=0.5,             # Vertical flip (baggage orientation varies)
+        fliplr=0.5,             # Horizontal flip
         
-        # Mosaic and mixup for better generalization
-        mosaic=1.0,         # Mosaic augmentation probability
-        mixup=0.1,          # Mixup augmentation probability
+        # Mosaic and mixup - CONFIGURABLE to prevent overfitting
+        mosaic=aug_mosaic,      # Mosaic augmentation (default: 0.8)
+        mixup=aug_mixup,        # Mixup augmentation (default: 0.0)
         
-        # Color augmentations (useful for X-ray contrast variations)
-        hsv_h=0.015,        # HSV-Hue augmentation
-        hsv_s=0.7,          # HSV-Saturation augmentation
-        hsv_v=0.4,          # HSV-Value augmentation
+        # Color augmentations - FIXED (X-ray contrast is important)
+        hsv_h=0.01,             # HSV-Hue augmentation
+        hsv_s=0.5,              # HSV-Saturation augmentation
+        hsv_v=0.3,              # HSV-Value augmentation
         
-        # Optimizer settings
-        optimizer='auto',    # SGD, Adam, or auto
-        lr0=0.01,           # Initial learning rate
-        lrf=0.01,           # Final learning rate (lr0 * lrf)
-        momentum=0.937,     # SGD momentum
-        weight_decay=0.0005,# Weight decay
-        warmup_epochs=3.0,  # Warmup epochs
-        warmup_momentum=0.8,# Warmup momentum
+        # CONFIGURABLE: Optimizer settings for better convergence
+        optimizer=optimizer,    # Optimizer type (default: AdamW)
+        lr0=learning_rate,      # Initial learning rate (default: 0.002)
+        lrf=0.001,              # Final learning rate (fixed: 0.001)
+        momentum=0.95,          # SGD momentum (fixed: 0.95)
+        weight_decay=0.0001,    # Weight decay (fixed: 0.0001)
+        warmup_epochs=warmup_epochs,  # Warmup epochs (default: 5.0)
+        warmup_momentum=0.9,    # Warmup momentum (fixed: 0.9)
         
         # Loss weights
         box=7.5,            # Box loss weight
@@ -117,11 +139,11 @@ def train_yolo(
         dfl=1.5,            # DFL loss weight
         
         # Other settings
-        plots=True,         # Save training plots
+        plots=False,        # Disable plots to avoid matplotlib backend issues in CAI
         save=True,          # Save checkpoints
         val=True,           # Validate during training
         cache=False,        # Cache images (set to True if enough RAM)
-        workers=8,          # Number of dataloader workers
+        workers=8,          # Number of dataloader workers (requires sufficient shared memory)
         
         # Override with any additional kwargs
         **kwargs
@@ -296,8 +318,61 @@ def main():
     parser.add_argument(
         '--patience',
         type=int,
-        default=50,
-        help='Early stopping patience in epochs (default: 50)'
+        default=10,
+        help='Early stopping patience in epochs (default: 10)'
+    )
+    
+    # Hyperparameter arguments
+    parser.add_argument(
+        '--learning-rate',
+        type=float,
+        default=0.002,
+        help='Initial learning rate (default: 0.002)'
+    )
+    parser.add_argument(
+        '--optimizer',
+        type=str,
+        default='AdamW',
+        choices=['SGD', 'Adam', 'AdamW', 'auto'],
+        help='Optimizer type (default: AdamW)'
+    )
+    parser.add_argument(
+        '--warmup-epochs',
+        type=float,
+        default=5.0,
+        help='Number of warmup epochs (default: 5.0)'
+    )
+    
+    # Augmentation arguments
+    parser.add_argument(
+        '--aug-degrees',
+        type=float,
+        default=10.0,
+        help='Rotation augmentation in degrees (default: 10.0)'
+    )
+    parser.add_argument(
+        '--aug-translate',
+        type=float,
+        default=0.05,
+        help='Translation augmentation (default: 0.05)'
+    )
+    parser.add_argument(
+        '--aug-scale',
+        type=float,
+        default=0.3,
+        help='Scale augmentation (default: 0.3)'
+    )
+    parser.add_argument(
+        '--aug-mosaic',
+        type=float,
+        default=0.8,
+        help='Mosaic augmentation probability (default: 0.8)'
+    )
+    parser.add_argument(
+        '--aug-mixup',
+        type=float,
+        default=0.0,
+        help='Mixup augmentation probability (default: 0.0)'
     )
     
     # Output arguments
@@ -368,6 +443,15 @@ def main():
         patience=args.patience,
         save_period=args.save_period,
         export_onnx=args.export_onnx,
+        # Configurable hyperparameters
+        learning_rate=args.learning_rate,
+        optimizer=args.optimizer,
+        warmup_epochs=args.warmup_epochs,
+        aug_degrees=args.aug_degrees,
+        aug_translate=args.aug_translate,
+        aug_scale=args.aug_scale,
+        aug_mosaic=args.aug_mosaic,
+        aug_mixup=args.aug_mixup,
     )
 
 

@@ -359,8 +359,8 @@ huggingface-cli upload \
    ```bash
    python inference/api_server.py \
      --model outputs/qwen25vl_stcray_lora \
-     --host 0.0.0.0 \
-     --port 8080
+     --host 127.0.0.1 \
+     --port 8100
    ```
 
 3. **Push to HuggingFace** (for persistence):

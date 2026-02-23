@@ -128,6 +128,7 @@ def main():
     print()
     print("  2. Push model to HuggingFace (optional):")
     print("     huggingface-cli upload your-org/qwen25vl-xray-finetuned outputs/qwen25vl_stcray_lora")
+    # Success - exit normally without sys.exit(0) for CAI compatibility
 
 
 if __name__ == "__main__":

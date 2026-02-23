@@ -15,8 +15,8 @@ BACKEND="${BACKEND:-ultralytics}"
 CONF_THRESHOLD="${CONF_THRESHOLD:-0.25}"
 IOU_THRESHOLD="${IOU_THRESHOLD:-0.45}"
 DEVICE="${DEVICE:-0}"
-HOST="${HOST:-0.0.0.0}"
-PORT="${PORT:-8080}"  # CAI Applications use port 8080
+HOST="${HOST:-127.0.0.1}"
+PORT="${PORT:-8100}"  # CAI Applications use port 8100
 
 echo "Configuration:"
 echo "  Model Path:       $MODEL_PATH"

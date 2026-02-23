@@ -401,9 +401,34 @@ jobs:
               config['jobs']['deploy_yolo_application']['environment']['CAI_DOMAIN'] = '${{ secrets.CML_HOST }}'
               config['jobs']['deploy_yolo_application']['environment']['APP_SUBDOMAIN'] = '${{ github.event.inputs.api_subdomain }}'
               
+              # Determine MODEL_PATH and parent_job_key based on workflow context
+              # If trigger_jobs=true: training happens, so auto-detect (empty string) and depend on yolo_training
+              # If trigger_jobs=false: deploy pre-trained model directly, use yolo_model input and depend on setup_environment
+              trigger_jobs = '${{ github.event.inputs.trigger_jobs }}' == 'true'
+              yolo_model = '${{ github.event.inputs.yolo_model }}'
+              
+              if trigger_jobs:
+                  # Auto-detect trained model after training completes
+                  model_path = ""
+                  model_desc = "Auto-detect from training"
+                  # Keep parent_job_key as 'yolo_training' (default in config)
+              else:
+                  # Deploy pre-trained model directly (skip training)
+                  model_path = yolo_model
+                  model_desc = f"Pre-trained: {yolo_model}"
+                  # Change parent_job_key to setup_environment (no training needed)
+                  config['jobs']['deploy_yolo_application']['parent_job_key'] = 'setup_environment'
+              
+              config['jobs']['deploy_yolo_application']['environment']['MODEL_PATH'] = model_path
+              
               print(f"✓ Deployment job configured:")
               print(f"  Subdomain: ${{ github.event.inputs.api_subdomain }}")
-              print(f"  API will be deployed after training completes")
+              print(f"  Model: {model_desc}")
+              print(f"  Parent: {config['jobs']['deploy_yolo_application']['parent_job_key']}")
+              if trigger_jobs:
+                  print(f"  API will be deployed after training completes")
+              else:
+                  print(f"  API will be deployed directly with pre-trained model")
           
           with open(config_file, 'w') as f:
               yaml.dump(config, f, default_flow_style=False)
@@ -429,7 +454,13 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Deployment Details" >> $GITHUB_STEP_SUMMARY
           echo "- **Subdomain**: ${{ github.event.inputs.api_subdomain }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Trigger**: Automatically after training completes" >> $GITHUB_STEP_SUMMARY
+          if [[ "${{ github.event.inputs.trigger_jobs }}" == "true" ]]; then
+            echo "- **Model**: Auto-detect from training" >> $GITHUB_STEP_SUMMARY
+            echo "- **Trigger**: Automatically after training completes" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Model**: Pre-trained ${{ github.event.inputs.yolo_model }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Trigger**: Directly after environment setup" >> $GITHUB_STEP_SUMMARY
+          fi
           echo "- **Startup Time**: 1-2 minutes" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Available Endpoints (after deployment)" >> $GITHUB_STEP_SUMMARY
