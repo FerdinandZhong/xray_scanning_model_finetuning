@@ -28,13 +28,17 @@ def train_yolo(
     device: str = '0',
     project: str = 'runs/detect',
     name: str = 'xray_detection',
-    patience: int = 50,
+    patience: int = 10,  # Early stopping: terminate if no improvement for 10 epochs
     save_period: int = 10,
     export_onnx: bool = False,
     **kwargs
 ):
     """
-    Train YOLO model on X-ray baggage dataset.
+    Train YOLO model on X-ray baggage dataset with early stopping.
+    
+    Early Stopping: Training automatically terminates if validation mAP50 
+    doesn't improve for 'patience' consecutive epochs (default: 10).
+    Best model checkpoint is saved before termination.
     
     Args:
         data_yaml: Path to data.yaml configuration file
@@ -80,6 +84,7 @@ def train_yolo(
     
     # Train the model with X-ray specific augmentations
     # Configuration optimized for convergence (addresses mAP50=0.2 plateau issue)
+    # Early stopping enabled: training terminates if no mAP50 improvement for 10 epochs
     results = model.train(
         data=data_yaml,
         epochs=epochs,
@@ -88,7 +93,7 @@ def train_yolo(
         device=device,
         project=project,
         name=name,
-        patience=patience,
+        patience=patience,  # Early stopping: stop if no improvement for this many epochs
         save_period=save_period,
         
         # X-ray specific augmentations (REDUCED from aggressive values)

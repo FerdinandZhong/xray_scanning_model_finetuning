@@ -66,10 +66,11 @@ jobs:
   # Job 3: YOLO Training
   # Supports multiple datasets: luggage_xray (recommended), cargoxray (quick), stcray (production)
   # Model selection: yolov8n (fastest), yolov8s (balanced), yolov8m (accurate), yolov11n (latest)
+  # Early stopping: Training terminates if no mAP50 improvement for 10 consecutive epochs
   # Note: Requires shared memory configured in CAI project settings (10GB recommended for 8 workers)
   yolo_training:
     name: "Train YOLO Detection Model"
-    description: "Train YOLO object detection model on selected dataset (fast, lightweight)"
+    description: "Train YOLO object detection model with early stopping (terminates after 10 epochs without improvement)"
     script: "cai_integration/yolo_training.py"
     kernel: "python3"
     cpu: 8  # 8 cores sufficient for YOLO training with GPU
@@ -80,12 +81,13 @@ jobs:
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5"
     environment:
       MODEL_NAME: "yolov8x.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
-      EPOCHS: "200"  # Increased from 100 to address mAP50=0.2 plateau
+      EPOCHS: "200"  # Max epochs (early stop at 10 epochs without improvement)
       BATCH_SIZE: "8"  # Reduced from 16 for better gradients (yolov8x)
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"  # Set to "true" to export ONNX for production
       VAL_SPLIT: "0.2"
       DATASET: "luggage_xray"  # luggage_xray (6,164 imgs), merged_xray (6,626 imgs), cargoxray, stcray
+      # Note: Early stopping (patience=10) is enabled by default in train_yolo.py
 
   # Job 4: Deploy YOLO API as CAI Application
   # Creates a persistent API endpoint accessible at https://[subdomain].[cai-domain]
