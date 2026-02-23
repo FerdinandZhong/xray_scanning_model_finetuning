@@ -32,7 +32,7 @@ jobs:
     memory: 16
     timeout: 3600  # 1 hour for pip installs
     parent_job_key: null
-    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       FORCE_REINSTALL: "false"
 
@@ -47,7 +47,7 @@ jobs:
     memory: 8
     timeout: 3600  # 1 hour for download
     parent_job_key: "setup_environment"
-    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
 
   # Job 3: Generate VQA Dataset
   # Uses external Qwen2.5-VL vLLM server to generate VQA pairs
@@ -62,7 +62,7 @@ jobs:
     gpu: 0  # CPU only, calls external vLLM
     timeout: 18000  # 5 hours
     parent_job_key: "download_dataset"
-    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       VLLM_API_BASE: "http://your-vllm-server:8000/v1"  # CONFIGURE THIS!
       MODEL_NAME: "Qwen/Qwen2.5-VL-7B-Instruct"
@@ -82,7 +82,7 @@ jobs:
     gpu: 2  # Multi-GPU training
     timeout: 43200  # 12 hours
     parent_job_key: "generate_vqa"
-    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       RESUME_FROM_CHECKPOINT: ""  # Set to checkpoint path to resume (e.g., "/home/cdsw/outputs/qwen25vl_stcray_lora/checkpoint-2000")
       CONFIG_FILE: "cai_integration/config/cai_train_config.yaml"

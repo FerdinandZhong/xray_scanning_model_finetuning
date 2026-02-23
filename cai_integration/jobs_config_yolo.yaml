@@ -35,7 +35,7 @@ jobs:
     memory: 16
     timeout: 3600  # 1 hour for pip installs
     parent_job_key: null
-    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       FORCE_REINSTALL: "false"
 
@@ -49,7 +49,7 @@ jobs:
     memory: 8
     timeout: 3600  # 1 hour for download
     parent_job_key: "setup_environment"
-    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
 
   # Job 2b: Download STCray Dataset (Optional - for stcray dataset)
   download_dataset:
@@ -61,7 +61,7 @@ jobs:
     memory: 8
     timeout: 3600  # 1 hour for download
     parent_job_key: "setup_environment"
-    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
 
   # Job 3: YOLO Training
   # Supports multiple datasets: luggage_xray (recommended), cargoxray (quick), stcray (production)
@@ -78,7 +78,7 @@ jobs:
     gpu: 1  # Single GPU is sufficient for YOLO training
     timeout: 14400  # 4 hours (increased for 200 epochs + yolov8x)
     parent_job_key: "download_luggage_xray"  # Updated by GitHub Actions based on dataset
-    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       # Basic Configuration
       MODEL_NAME: "yolov8x.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
@@ -113,7 +113,7 @@ jobs:
     memory: 8
     timeout: 1800  # 30 minutes
     parent_job_key: "yolo_training"
-    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       # CAI credentials (set in GitHub Secrets or CAI Environment Variables)
       CAI_API_KEY: "${CAI_API_KEY}"
