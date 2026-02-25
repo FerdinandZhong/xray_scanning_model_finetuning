@@ -12,7 +12,10 @@
 # - Lower resource requirements (2-8GB VRAM vs 16GB+)
 #
 # Environment Variables:
-# - FORCE_REINSTALL: Set to "true" to force full environment reinstall (default: "false")
+# - FORCE_REINSTALL:  Set to "true" to force full environment reinstall (default: "false")
+# - OUTPUT_NAME:      Combined dataset name under data/ (default: combined_xray_yolo)
+# - MAX_PER_CLASS:    Cap STCray images per class, 0 = no cap (default: 0)
+# - FORCE_REBUILD:    Rebuild combined dataset even if it exists (default: false)
 # - MODEL_NAME: YOLO model variant (yolov8n, yolov8s, yolov8m, yolov11n, default: yolov8n.pt)
 # - EPOCHS: Training epochs (default: 100)
 # - BATCH_SIZE: Batch size (default: 16)
@@ -21,7 +24,8 @@
 # - VAL_SPLIT: Validation split ratio (default: 0.2)
 #
 # Job Dependencies (handled automatically by CAI):
-# - setup_environment (root) → download_dataset → yolo_training
+# - setup_environment (root) → download_luggage_xray + download_dataset → combine_datasets → yolo_training
+# - combine_datasets is optional: skip it and set parent_job_key on yolo_training to download_luggage_xray
 # - When parent job succeeds, child jobs auto-trigger automatically
 
 jobs:
@@ -63,6 +67,27 @@ jobs:
     parent_job_key: "setup_environment"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
 
+  # Job 2c: Combine Datasets (Optional - run when using combined_xray dataset)
+  # Merges luggage_xray_yolo + STCray into a unified 16-class dataset (~32K+ images)
+  # Prerequisites: download_luggage_xray AND download_dataset must both complete first
+  # To use: set yolo_training parent_job_key to "combine_datasets" and DATASET to "combined_xray_yolo"
+  combine_datasets:
+    name: "Combine X-ray Datasets"
+    description: "Merge luggage_xray (6K) + STCray threats (30K) into unified 16-class YOLO dataset (~32K+ images)"
+    script: "cai_integration/combine_datasets.py"
+    kernel: "python3"
+    cpu: 8   # High CPU for parallel image copying
+    memory: 32  # Large dataset requires sufficient memory
+    timeout: 7200  # 2 hours for 36K+ image copy + conversion
+    parent_job_key: "download_luggage_xray"  # Requires luggage dataset; STCray assumed already present
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      OUTPUT_NAME: "combined_xray_yolo"  # Output dir under data/
+      MAX_PER_CLASS: "0"    # 0 = no cap; set e.g. "3000" to balance classes
+      FORCE_REBUILD: "false"  # Set "true" to delete and rebuild existing dataset
+      INCLUDE_LUGGAGE: "true"
+      INCLUDE_STCRAY: "true"
+
   # Job 3: YOLO Training
   # Supports multiple datasets: luggage_xray (recommended), cargoxray (quick), stcray (production)
   # Model selection: yolov8n (fastest), yolov8s (balanced), yolov8m (accurate), yolov11n (latest)
@@ -81,16 +106,16 @@ jobs:
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       # Basic Configuration
-      MODEL_NAME: "yolov8x.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
-      DATASET: "luggage_xray"  # luggage_xray (6,164 imgs), merged_xray (6,626 imgs), cargoxray, stcray
+      MODEL_NAME: "yolov8m.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
+      DATASET: "luggage_xray"  # luggage_xray (6,164 imgs), combined_xray (36K+ imgs), cargoxray, stcray
       EPOCHS: "200"  # Max epochs (early stop if no improvement)
-      BATCH_SIZE: "8"  # Batch size (8 for yolov8x, 16 for yolov8n/s/m)
+      BATCH_SIZE: "16"  # Batch size (16 for yolov8m, 8 for yolov8x, 32 for yolov8n/s)
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"  # Set to "true" to export ONNX for production
       VAL_SPLIT: "0.2"
       
-      # Hyperparameters (Optimized for mAP50>0.50)
-      LEARNING_RATE: "0.002"  # Initial learning rate (0.002 for yolov8x, 0.01 for yolov8n)
+      # Hyperparameters (Optimized for yolov8m)
+      LEARNING_RATE: "0.003"  # Initial learning rate (0.003 for yolov8m, 0.002 for yolov8x)
       OPTIMIZER: "AdamW"  # Optimizer: SGD, Adam, AdamW (AdamW best for large models)
       PATIENCE: "10"  # Early stopping: terminate after N epochs without improvement
       WARMUP_EPOCHS: "5.0"  # Warmup epochs for gradual LR ramp-up

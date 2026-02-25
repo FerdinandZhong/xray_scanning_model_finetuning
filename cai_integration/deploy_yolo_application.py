@@ -162,9 +162,9 @@ def create_or_update_application(
         "gpu": 1 if use_gpu else 0,  # 1 GPU if enabled, 0 for CPU-only
         "bypass_authentication": True,  # Allow unauthenticated API access
         "runtime_identifier": (
-            "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-cuda:2025.09.1-b5" 
-            if use_gpu else 
-            "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-jupyterlab-python3.10-standard:2025.09.1-b5"
+            "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+            if use_gpu else
+            "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
         ),
         "environment": {
             "MODEL_PATH": model_path,
