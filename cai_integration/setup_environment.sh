@@ -23,6 +23,11 @@ VENV_PATH="/home/cdsw/.venv"
 # Check if we can skip setup (venv exists with required packages installed)
 check_existing_setup() {
     if [ -d "$VENV_PATH" ] && [ -f "$VENV_PATH/bin/python" ]; then
+        # datasets is required by all pipeline jobs (download_stcray.py)
+        if ! "$VENV_PATH/bin/python" -c "import datasets" 2>/dev/null; then
+            echo "  (datasets package missing, reinstall needed)"
+            return 1
+        fi
         # Check for YOLO requirements (torch + ultralytics)
         if "$VENV_PATH/bin/python" -c "import torch; from ultralytics import YOLO" 2>/dev/null; then
             echo "  (YOLO environment detected)"
