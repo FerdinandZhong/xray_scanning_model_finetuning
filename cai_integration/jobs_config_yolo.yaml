@@ -81,16 +81,16 @@ jobs:
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       # Basic Configuration
-      MODEL_NAME: "yolov8x.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
-      DATASET: "luggage_xray"  # luggage_xray (6,164 imgs), merged_xray (6,626 imgs), cargoxray, stcray
+      MODEL_NAME: "yolov8m.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
+      DATASET: "luggage_xray"  # luggage_xray (6,164 imgs), combined_xray (36K+ imgs), cargoxray, stcray
       EPOCHS: "200"  # Max epochs (early stop if no improvement)
-      BATCH_SIZE: "8"  # Batch size (8 for yolov8x, 16 for yolov8n/s/m)
+      BATCH_SIZE: "16"  # Batch size (16 for yolov8m, 8 for yolov8x, 32 for yolov8n/s)
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"  # Set to "true" to export ONNX for production
       VAL_SPLIT: "0.2"
       
-      # Hyperparameters (Optimized for mAP50>0.50)
-      LEARNING_RATE: "0.002"  # Initial learning rate (0.002 for yolov8x, 0.01 for yolov8n)
+      # Hyperparameters (Optimized for yolov8m)
+      LEARNING_RATE: "0.003"  # Initial learning rate (0.003 for yolov8m, 0.002 for yolov8x)
       OPTIMIZER: "AdamW"  # Optimizer: SGD, Adam, AdamW (AdamW best for large models)
       PATIENCE: "10"  # Early stopping: terminate after N epochs without improvement
       WARMUP_EPOCHS: "5.0"  # Warmup epochs for gradual LR ramp-up
