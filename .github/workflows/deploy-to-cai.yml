@@ -226,7 +226,6 @@ jobs:
           if model_type == 'yolo':
               # Configure YOLO-specific parameters
               dataset = '${{ github.event.inputs.dataset }}'
-              hf_token = '${{ secrets.HF_TOKEN }}'
               config['jobs']['yolo_training']['environment']['MODEL_NAME'] = '${{ github.event.inputs.yolo_model }}'
               config['jobs']['yolo_training']['environment']['EPOCHS'] = '${{ github.event.inputs.yolo_epochs }}'
               config['jobs']['yolo_training']['environment']['EXPORT_ONNX'] = 'true' if '${{ github.event.inputs.export_onnx }}' == 'true' else 'false'
@@ -246,12 +245,8 @@ jobs:
                   # Combined: needs luggage_xray + STCray + combine step
                   config['jobs']['yolo_training']['timeout'] = 14400  # 4 hours
                   config['jobs']['yolo_training']['parent_job_key'] = 'combine_datasets'
-                  if not config['jobs'].get('download_dataset', {}).get('environment'):
-                      config['jobs']['download_dataset']['environment'] = {}
-                  config['jobs']['download_dataset']['environment']['HF_TOKEN'] = hf_token
                   print(f"✓ Combined dataset: luggage_xray + STCray → combine_datasets → yolo_training")
-                  if not hf_token:
-                      print("⚠ WARNING: HF_TOKEN secret is not set — STCray download will fail!")
+                  print(f"  HF_TOKEN will be injected from GitHub secret at job creation time")
               elif dataset == 'cargoxray':
                   # CargoXray is in Git LFS, no download needed
                   config['jobs']['yolo_training']['timeout'] = 3600  # 1 hour
@@ -268,16 +263,12 @@ jobs:
                   config['jobs']['yolo_training']['timeout'] = 14400  # 4 hours
                   config['jobs']['yolo_training']['parent_job_key'] = 'download_dataset'
                   config['jobs']['download_dataset']['timeout'] = 3600  # 1 hour
-                  if not config['jobs'].get('download_dataset', {}).get('environment'):
-                      config['jobs']['download_dataset']['environment'] = {}
-                  config['jobs']['download_dataset']['environment']['HF_TOKEN'] = hf_token
                   if 'download_luggage_xray' in config['jobs']:
                       del config['jobs']['download_luggage_xray']
                   if 'combine_datasets' in config['jobs']:
                       del config['jobs']['combine_datasets']
                   print(f"✓ STCray: Will download from HuggingFace")
-                  if not hf_token:
-                      print("⚠ WARNING: HF_TOKEN secret is not set — STCray download will fail!")
+                  print(f"  HF_TOKEN will be injected from GitHub secret at job creation time")
 
               print(f"✓ YOLO configuration:")
               print(f"  Dataset: {dataset}")
@@ -308,8 +299,10 @@ jobs:
         env:
           CML_HOST: ${{ secrets.CML_HOST }}
           CML_API_KEY: ${{ secrets.CML_API_KEY }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           MODEL_TYPE="${{ github.event.inputs.model_type }}"
+          DATASET="${{ github.event.inputs.dataset }}"
           if [ "$MODEL_TYPE" = "yolo" ]; then
             CONFIG_FILE="cai_integration/jobs_config_yolo.yaml"
             echo "📋 Creating YOLO detection jobs..."
@@ -317,11 +310,20 @@ jobs:
             CONFIG_FILE="cai_integration/jobs_config.yaml"
             echo "📋 Creating VLM training jobs..."
           fi
-          
+
+          # Inject HF_TOKEN directly from the runner environment into the
+          # download_dataset job — no token is written to any config file.
+          JOB_ENV_ARGS=""
+          if [[ "$DATASET" == "stcray" || "$DATASET" == "combined_xray_yolo" ]]; then
+            JOB_ENV_ARGS="--job-env download_dataset:HF_TOKEN"
+            echo "🔑 HF_TOKEN will be injected into 'download_dataset' job from runner env"
+          fi
+
           echo "Using config: $CONFIG_FILE"
           python cai_integration/create_jobs.py \
             --project-id ${{ needs.setup-project.outputs.project_id }} \
-            --config "$CONFIG_FILE"
+            --config "$CONFIG_FILE" \
+            $JOB_ENV_ARGS
           echo "✅ Jobs created"
 
       - name: Create job summary
