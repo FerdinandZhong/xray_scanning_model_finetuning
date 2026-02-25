@@ -10,11 +10,29 @@ Dataset: Naoufel555/STCray-Dataset
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Optional
 
+import huggingface_hub
 from datasets import load_dataset
 from tqdm import tqdm
+
+
+def _authenticate(hf_token: str) -> bool:
+    """Login to HuggingFace Hub and verify the token is accepted."""
+    try:
+        huggingface_hub.login(token=hf_token, add_to_git_credential=False)
+        whoami = huggingface_hub.whoami()
+        print(f"✓ Authenticated as: {whoami.get('name', whoami.get('fullname', 'unknown'))}")
+        return True
+    except huggingface_hub.errors.HfHubHTTPError as exc:
+        print(f"❌ HuggingFace authentication failed: {exc}")
+        print("   Check that:")
+        print("   1. The token is valid (https://huggingface.co/settings/tokens)")
+        print("   2. You have accepted the dataset terms at")
+        print("      https://huggingface.co/datasets/Naoufel555/STCray-Dataset")
+        return False
 
 
 def download_stcray(
@@ -38,10 +56,15 @@ def download_stcray(
     print("=" * 60)
 
     hf_token = os.environ.get("HF_TOKEN", "").strip() or None
-    if hf_token:
-        print("✓ Using HF_TOKEN for authentication")
-    else:
-        print("⚠  HF_TOKEN not set — download will fail for gated datasets")
+    if not hf_token:
+        print("❌ HF_TOKEN is not set — cannot access gated dataset")
+        return False
+
+    # Explicitly login so the token is active for all HuggingFace calls,
+    # regardless of datasets/huggingface_hub version differences.
+    print("\nAuthenticating with HuggingFace Hub...")
+    if not _authenticate(hf_token):
+        return False
 
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -58,8 +81,8 @@ def download_stcray(
         print(f"Error loading dataset: {e}")
         print("\nTroubleshooting:")
         print("1. Check internet connection")
-        print("2. Set HF_TOKEN env var with a token that has access to this dataset")
-        print("3. Accept the dataset terms at https://huggingface.co/datasets/Naoufel555/STCray-Dataset")
+        print("2. Verify HF_TOKEN has read access to this dataset")
+        print("3. Accept terms at https://huggingface.co/datasets/Naoufel555/STCray-Dataset")
         return False
     
     print(f"Dataset loaded successfully!")
