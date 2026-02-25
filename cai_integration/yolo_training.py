@@ -3,10 +3,15 @@
 YOLO X-ray Detection Training Job for CAI.
 
 This script trains a YOLO model for X-ray baggage threat detection.
-Supports both STCray and CargoXray datasets.
+Supports luggage_xray, combined_xray_yolo, cargoxray, and stcray datasets.
+
+Training paths:
+  YOLO-only:  DATASET=luggage_xray   → data/luggage_xray_yolo/data.yaml   (6K imgs, 12 classes)
+  Combined:   DATASET=combined_xray_yolo → data/combined_xray_yolo/data.yaml (36K+ imgs, 16 classes)
+  Legacy:     DATASET=cargoxray / stcray (original single-source datasets)
 
 Environment Variables:
-- DATASET: Dataset to use (cargoxray or stcray, default: stcray)
+- DATASET: Dataset to use (luggage_xray | combined_xray_yolo | cargoxray | stcray, default: luggage_xray)
 - MODEL_NAME: YOLO model name (default: yolov8n.pt)
 - EPOCHS: Number of training epochs (default: 100)
 - BATCH_SIZE: Batch size (default: 16)
@@ -90,7 +95,19 @@ def main():
     print()
     
     # Verify dataset exists based on type
-    if dataset == "cargoxray":
+    if dataset == "combined_xray_yolo" or dataset.startswith("combined_"):
+        # Combined dataset is already in YOLO format, built by combine_datasets job
+        data_yaml = project_root / "data" / dataset / "data.yaml"
+        if not data_yaml.exists():
+            print(f"❌ Error: Combined dataset data.yaml not found at {data_yaml}")
+            print(f"   Run the 'combine_datasets' job first (OUTPUT_NAME={dataset})")
+            sys.exit(1)
+        train_imgs = list((project_root / "data" / dataset / "images" / "train").glob("*.jpg"))
+        val_imgs   = list((project_root / "data" / dataset / "images" / "valid").glob("*.jpg"))
+        print(f"✓ Combined YOLO data verified: {data_yaml}")
+        print(f"  ({len(train_imgs):,} train / {len(val_imgs):,} val images, 16 classes)")
+        print()
+    elif dataset == "cargoxray":
         # CargoXray is already in YOLO format from Git LFS
         data_yaml = project_root / "data/cargoxray_yolo/data.yaml"
         if not data_yaml.exists():
@@ -144,7 +161,15 @@ def main():
     print()
     
     # Determine data.yaml path based on dataset
-    if dataset == "cargoxray":
+    if dataset == "combined_xray_yolo" or dataset.startswith("combined_"):
+        data_yaml_path = f"data/{dataset}/data.yaml"
+        print("=" * 60)
+        print("Using Combined X-ray Dataset (luggage_xray + STCray)")
+        print("=" * 60)
+        print(f"✓ Data YAML: {data_yaml_path}")
+        print("  (~36K+ images, 16 classes — no conversion needed)")
+        print()
+    elif dataset == "cargoxray":
         data_yaml_path = "data/cargoxray_yolo/data.yaml"
         print("=" * 60)
         print("Using Pre-Converted CargoXray Data")
@@ -155,10 +180,10 @@ def main():
     elif dataset == "luggage_xray":
         data_yaml_path = "data/luggage_xray_yolo/data.yaml"
         print("=" * 60)
-        print("Using Pre-Converted Luggage X-ray Data")
+        print("Using Luggage X-ray Dataset (YOLO-only)")
         print("=" * 60)
         print(f"✓ Data YAML: {data_yaml_path}")
-        print("  (No conversion needed - already in YOLO format)")
+        print("  (6,164 images, 12 classes — no conversion needed)")
         print()
     else:  # stcray
         print("=" * 60)

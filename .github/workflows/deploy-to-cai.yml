@@ -18,6 +18,7 @@ on:
         type: choice
         options:
           - luggage_xray
+          - combined_xray_yolo
           - cargoxray
           - stcray
       yolo_model:
@@ -91,11 +92,12 @@ jobs:
             echo "   Model: ${{ github.event.inputs.yolo_model }}"
             echo "   Epochs: ${{ github.event.inputs.yolo_epochs }}"
             echo "   Export ONNX: ${{ github.event.inputs.export_onnx }}"
-            if [ "${{ github.event.inputs.dataset }}" = "cargoxray" ]; then
-              echo "   🚀 CargoXray: Quick baseline (~30 min)"
-            else
-              echo "   🚀 STCray: Production model (~4 hours)"
-            fi
+            case "${{ github.event.inputs.dataset }}" in
+              cargoxray)       echo "   🚀 CargoXray: Quick baseline (~1 h, Git LFS)" ;;
+              luggage_xray)    echo "   🚀 Luggage X-ray: Fast training (~2 h, 6K imgs)" ;;
+              combined_xray_yolo) echo "   🚀 Combined: luggage_xray + STCray (~4 h, 36K+ imgs) — HF_TOKEN required" ;;
+              stcray)          echo "   🚀 STCray only: Production model (~4 h) — HF_TOKEN required" ;;
+            esac
           elif [ "${{ github.event.inputs.model_type }}" = "vlm" ]; then
             echo "✅ Using VLM (Vision-Language Model) approach"
             if [ -z "${{ github.event.inputs.vllm_endpoint }}" ]; then
@@ -224,41 +226,59 @@ jobs:
           if model_type == 'yolo':
               # Configure YOLO-specific parameters
               dataset = '${{ github.event.inputs.dataset }}'
+              hf_token = '${{ secrets.HF_TOKEN }}'
               config['jobs']['yolo_training']['environment']['MODEL_NAME'] = '${{ github.event.inputs.yolo_model }}'
               config['jobs']['yolo_training']['environment']['EPOCHS'] = '${{ github.event.inputs.yolo_epochs }}'
               config['jobs']['yolo_training']['environment']['EXPORT_ONNX'] = 'true' if '${{ github.event.inputs.export_onnx }}' == 'true' else 'false'
               config['jobs']['yolo_training']['environment']['DATASET'] = dataset
-              
-              # Adjust timeout and dependencies based on dataset
-              # Also remove unused download jobs to avoid errors
+
+              # Adjust timeout, dependencies, and HF auth based on dataset
               if dataset == 'luggage_xray':
-                  # Luggage X-ray needs to be downloaded from Roboflow
+                  # Luggage X-ray only — no STCray, no combine step
                   config['jobs']['yolo_training']['timeout'] = 7200  # 2 hours
                   config['jobs']['yolo_training']['parent_job_key'] = 'download_luggage_xray'
-                  # Remove unused download job
                   if 'download_dataset' in config['jobs']:
                       del config['jobs']['download_dataset']
+                  if 'combine_datasets' in config['jobs']:
+                      del config['jobs']['combine_datasets']
                   print(f"✓ Luggage X-ray: Will download from Roboflow")
+              elif dataset == 'combined_xray_yolo':
+                  # Combined: needs luggage_xray + STCray + combine step
+                  config['jobs']['yolo_training']['timeout'] = 14400  # 4 hours
+                  config['jobs']['yolo_training']['parent_job_key'] = 'combine_datasets'
+                  if not config['jobs'].get('download_dataset', {}).get('environment'):
+                      config['jobs']['download_dataset']['environment'] = {}
+                  config['jobs']['download_dataset']['environment']['HF_TOKEN'] = hf_token
+                  print(f"✓ Combined dataset: luggage_xray + STCray → combine_datasets → yolo_training")
+                  if not hf_token:
+                      print("⚠ WARNING: HF_TOKEN secret is not set — STCray download will fail!")
               elif dataset == 'cargoxray':
                   # CargoXray is in Git LFS, no download needed
                   config['jobs']['yolo_training']['timeout'] = 3600  # 1 hour
-                  config['jobs']['yolo_training']['parent_job_key'] = 'setup_environment'  # Skip download
-                  # Remove both download jobs (not needed for LFS data)
+                  config['jobs']['yolo_training']['parent_job_key'] = 'setup_environment'
                   if 'download_luggage_xray' in config['jobs']:
                       del config['jobs']['download_luggage_xray']
                   if 'download_dataset' in config['jobs']:
                       del config['jobs']['download_dataset']
+                  if 'combine_datasets' in config['jobs']:
+                      del config['jobs']['combine_datasets']
                   print(f"✓ CargoXray: Using Git LFS (no download job needed)")
               else:  # stcray
-                  # STCray needs to be downloaded from HuggingFace
+                  # STCray only — needs HF token
                   config['jobs']['yolo_training']['timeout'] = 14400  # 4 hours
                   config['jobs']['yolo_training']['parent_job_key'] = 'download_dataset'
                   config['jobs']['download_dataset']['timeout'] = 3600  # 1 hour
-                  # Remove unused download job
+                  if not config['jobs'].get('download_dataset', {}).get('environment'):
+                      config['jobs']['download_dataset']['environment'] = {}
+                  config['jobs']['download_dataset']['environment']['HF_TOKEN'] = hf_token
                   if 'download_luggage_xray' in config['jobs']:
                       del config['jobs']['download_luggage_xray']
+                  if 'combine_datasets' in config['jobs']:
+                      del config['jobs']['combine_datasets']
                   print(f"✓ STCray: Will download from HuggingFace")
-              
+                  if not hf_token:
+                      print("⚠ WARNING: HF_TOKEN secret is not set — STCray download will fail!")
+
               print(f"✓ YOLO configuration:")
               print(f"  Dataset: {dataset}")
               print(f"  Model: {config['jobs']['yolo_training']['environment']['MODEL_NAME']}")

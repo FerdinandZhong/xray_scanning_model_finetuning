@@ -9,6 +9,7 @@ Dataset: Naoufel555/STCray-Dataset
 
 import argparse
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -23,7 +24,9 @@ def download_stcray(
 ):
     """
     Download STCray dataset from HuggingFace.
-    
+
+    Authentication: set HF_TOKEN env var (required — dataset is gated).
+
     Args:
         output_dir: Output directory for dataset
         cache_dir: HuggingFace cache directory
@@ -33,23 +36,30 @@ def download_stcray(
     print("Downloading STCray Dataset from HuggingFace")
     print("Dataset: Naoufel555/STCray-Dataset")
     print("=" * 60)
-    
+
+    hf_token = os.environ.get("HF_TOKEN", "").strip() or None
+    if hf_token:
+        print("✓ Using HF_TOKEN for authentication")
+    else:
+        print("⚠  HF_TOKEN not set — download will fail for gated datasets")
+
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    
+
     # Load dataset from HuggingFace
     print("\nLoading dataset from HuggingFace...")
     try:
         dataset = load_dataset(
             "Naoufel555/STCray-Dataset",
             cache_dir=cache_dir,
+            token=hf_token,
         )
     except Exception as e:
         print(f"Error loading dataset: {e}")
         print("\nTroubleshooting:")
         print("1. Check internet connection")
-        print("2. Verify HuggingFace access (some datasets require authentication)")
-        print("3. Try: huggingface-cli login")
+        print("2. Set HF_TOKEN env var with a token that has access to this dataset")
+        print("3. Accept the dataset terms at https://huggingface.co/datasets/Naoufel555/STCray-Dataset")
         return False
     
     print(f"Dataset loaded successfully!")

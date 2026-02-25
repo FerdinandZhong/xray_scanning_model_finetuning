@@ -55,7 +55,9 @@ jobs:
     parent_job_key: "setup_environment"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
 
-  # Job 2b: Download STCray Dataset (Optional - for stcray dataset)
+  # Job 2b: Download STCray Dataset (gated — requires HuggingFace token)
+  # Set HF_TOKEN in the CAI job environment variables (or GitHub Secrets).
+  # Accept dataset terms first: https://huggingface.co/datasets/Naoufel555/STCray-Dataset
   download_dataset:
     name: "Download STCray Dataset"
     description: "Download STCray dataset from HuggingFace (46k images with 21 threat categories)"
@@ -66,11 +68,13 @@ jobs:
     timeout: 3600  # 1 hour for download
     parent_job_key: "setup_environment"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      HF_TOKEN: "${HF_TOKEN}"  # HuggingFace token — set in CAI env vars or GitHub Secrets
 
-  # Job 2c: Combine Datasets (Optional - run when using combined_xray dataset)
-  # Merges luggage_xray_yolo + STCray into a unified 16-class dataset (~32K+ images)
-  # Prerequisites: download_luggage_xray AND download_dataset must both complete first
-  # To use: set yolo_training parent_job_key to "combine_datasets" and DATASET to "combined_xray_yolo"
+  # Job 2c: Combine Datasets
+  # Merges luggage_xray_yolo + STCray into a unified 16-class dataset (~36K+ images).
+  # Always runs before yolo_training; skips instantly when dataset already exists (FORCE_REBUILD=false).
+  # Prerequisites: download_luggage_xray AND download_dataset must both complete first.
   combine_datasets:
     name: "Combine X-ray Datasets"
     description: "Merge luggage_xray (6K) + STCray threats (30K) into unified 16-class YOLO dataset (~32K+ images)"
@@ -88,44 +92,61 @@ jobs:
       INCLUDE_LUGGAGE: "true"
       INCLUDE_STCRAY: "true"
 
+  # ──────────────────────────────────────────────────────────────────────────
   # Job 3: YOLO Training
-  # Supports multiple datasets: luggage_xray (recommended), cargoxray (quick), stcray (production)
-  # Model selection: yolov8n (fastest), yolov8s (balanced), yolov8m (accurate), yolov11n (latest)
-  # Early stopping: Training terminates if no mAP50 improvement for 10 consecutive epochs
-  # Note: Requires shared memory configured in CAI project settings (10GB recommended for 8 workers)
+  #
+  # Switch between training paths using ONLY the DATASET env var — no YAML
+  # edits needed after the jobs are created.  combine_datasets is always the
+  # parent; it completes in seconds when the combined dataset already exists
+  # (FORCE_REBUILD=false), so it adds negligible overhead on PATH A runs.
+  #
+  #  PATH A  DATASET=luggage_xray        6,164 imgs · 12 classes · fastest
+  #  PATH B  DATASET=combined_xray_yolo  36K+ imgs  · 16 classes · accurate
+  #
+  # Change DATASET in the CAI job's environment variables page (no redeploy).
+  #
+  # Model selection: yolov8n (fastest), yolov8s (balanced), yolov8m (accurate)
+  # Early stopping: terminates after PATIENCE epochs without mAP50 improvement
+  # Shared memory:  10 GB recommended in CAI project settings (8 workers)
+  # ──────────────────────────────────────────────────────────────────────────
   yolo_training:
     name: "Train YOLO Detection Model"
     description: "Train YOLO object detection model with early stopping (terminates after 10 epochs without improvement)"
     script: "cai_integration/yolo_training.py"
     kernel: "python3"
-    cpu: 8  # 8 cores sufficient for YOLO training with GPU
-    memory: 32  # 32GB sufficient with dedicated shared memory
-    gpu: 1  # Single GPU is sufficient for YOLO training
-    timeout: 14400  # 4 hours (increased for 200 epochs + yolov8x)
-    parent_job_key: "download_luggage_xray"  # Updated by GitHub Actions based on dataset
+    cpu: 8
+    memory: 32
+    gpu: 1
+    timeout: 14400  # 4 hours (sufficient for 200 epochs + yolov8m)
+    # Fixed parent — combine_datasets is a no-op when dataset already exists,
+    # so this dependency costs nothing on PATH A (luggage_xray) runs.
+    parent_job_key: "combine_datasets"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
-      # Basic Configuration
+      # ── Switch training path via this single env var ─────────────────────
+      # PATH A (YOLO-only):  luggage_xray
+      # PATH B (Combined):   combined_xray_yolo
+      DATASET: "luggage_xray"
+
       MODEL_NAME: "yolov8m.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
-      DATASET: "luggage_xray"  # luggage_xray (6,164 imgs), combined_xray (36K+ imgs), cargoxray, stcray
-      EPOCHS: "200"  # Max epochs (early stop if no improvement)
-      BATCH_SIZE: "16"  # Batch size (16 for yolov8m, 8 for yolov8x, 32 for yolov8n/s)
+      EPOCHS: "200"             # Max epochs (early stop if no improvement)
+      BATCH_SIZE: "16"          # 16 for yolov8m, 8 for yolov8x, 32 for yolov8n/s
       IMG_SIZE: "640"
-      EXPORT_ONNX: "false"  # Set to "true" to export ONNX for production
-      VAL_SPLIT: "0.2"
-      
-      # Hyperparameters (Optimized for yolov8m)
-      LEARNING_RATE: "0.003"  # Initial learning rate (0.003 for yolov8m, 0.002 for yolov8x)
-      OPTIMIZER: "AdamW"  # Optimizer: SGD, Adam, AdamW (AdamW best for large models)
-      PATIENCE: "10"  # Early stopping: terminate after N epochs without improvement
-      WARMUP_EPOCHS: "5.0"  # Warmup epochs for gradual LR ramp-up
-      
-      # Augmentation Parameters (Moderate settings to prevent confusion)
-      AUG_DEGREES: "10.0"  # Rotation augmentation in degrees (0-30, default: 10)
-      AUG_TRANSLATE: "0.05"  # Translation augmentation (0-0.2, default: 0.05)
-      AUG_SCALE: "0.3"  # Scale augmentation (0-1.0, default: 0.3)
-      AUG_MOSAIC: "0.8"  # Mosaic augmentation probability (0-1.0, default: 0.8)
-      AUG_MIXUP: "0.0"  # Mixup augmentation probability (0-1.0, default: 0.0)
+      EXPORT_ONNX: "false"      # Set "true" to export ONNX for production
+      VAL_SPLIT: "0.2"          # Only used for stcray dataset
+
+      # Hyperparameters (optimised for yolov8m)
+      LEARNING_RATE: "0.003"    # 0.003 for yolov8m, 0.002 for yolov8x
+      OPTIMIZER: "AdamW"        # SGD | Adam | AdamW
+      PATIENCE: "10"            # Early-stop after N epochs without mAP50 gain
+      WARMUP_EPOCHS: "5.0"
+
+      # Augmentation
+      AUG_DEGREES: "10.0"       # Rotation (0–30°)
+      AUG_TRANSLATE: "0.05"     # Translation (0–0.2)
+      AUG_SCALE: "0.3"          # Scale (0–1.0)
+      AUG_MOSAIC: "0.8"         # Mosaic probability (0–1.0)
+      AUG_MIXUP: "0.0"          # Mixup probability (0–1.0)
 
   # Job 4: Deploy YOLO API as CAI Application
   # Creates a persistent API endpoint accessible at https://[subdomain].[cai-domain]
