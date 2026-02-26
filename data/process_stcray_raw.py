@@ -61,8 +61,11 @@ def parse_labelme_json(json_path: Path):
     """
     Parse a Labelme annotation JSON file.
     Returns (categories, bboxes, img_w, img_h).
+    Raises ValueError for macOS resource-fork (._) files.
     """
-    with open(json_path) as f:
+    if json_path.name.startswith("._"):
+        raise ValueError(f"macOS resource-fork file, skipping: {json_path.name}")
+    with open(json_path, encoding="utf-8") as f:
         data = json.load(f)
 
     categories = []
@@ -104,7 +107,7 @@ def process_split(
     output_dir.mkdir(parents=True, exist_ok=True)
     annotations = []
     image_id = 0
-    skipped = 0
+    project_root_abs = project_root.resolve()
 
     class_dirs = sorted(images_root.iterdir())
     for class_dir in class_dirs:
@@ -115,7 +118,25 @@ def process_split(
         bb_dir = json_bb_root / class_dir.name
 
         for img_path in sorted(class_dir.glob("*.jpg")):
+            # Skip macOS resource-fork files (._filename.jpg) created by tar
+            if img_path.name.startswith("._"):
+                continue
+
+            img_abs = img_path.resolve()
+
+            # Build relative path from project root (absolute → absolute)
+            try:
+                rel_path = img_abs.relative_to(project_root_abs)
+            except ValueError:
+                # Fallback: reconstruct from known directory structure
+                rel_path = Path("data/stcray_raw") / img_path.relative_to(
+                    images_root.parent.parent
+                )
+
             json_path = bb_dir / (img_path.stem + ".json")
+            # Also skip resource-fork JSON counterparts
+            if json_path.name.startswith("._"):
+                json_path = bb_dir / (img_path.stem[2:] + ".json")
 
             if json_path.exists():
                 try:
@@ -127,12 +148,11 @@ def process_split(
                 # No bbox annotation — use folder class name, empty bboxes
                 categories, bboxes = [class_name], []
 
-            rel_path = img_path.relative_to(project_root)
             annotations.append({
                 "image_id":             image_id,
                 "image_filename":       img_path.name,
                 "image_path":           str(rel_path),
-                "image_path_absolute":  str(img_path.resolve()),
+                "image_path_absolute":  str(img_abs),
                 "caption":              "",
                 "categories":           categories,
                 "bboxes":               bboxes,
