@@ -10,7 +10,11 @@ system packages required.
 This job:
   1. Verifies the tar.gz files are present under data/stcray_raw/
   2. Extracts them using Python tarfile (no external tools needed)
+     — SKIPPED automatically if STCray_TrainSet/Images/ and STCray_TestSet/Images/
+       already contain .jpg files (safe to rerun after a failed annotation step)
   3. Runs data/process_stcray_raw.py to build stcray_processed/annotations.json
+     — SKIPPED automatically if both train/ and test/ annotations.json exist
+     — Set env var FORCE_REPROCESS=true to force a full rebuild of annotations
 """
 
 import subprocess
@@ -69,8 +73,12 @@ def main():
         extract_target = raw_dir / folder_name
         images_dir = extract_target / "Images"
 
-        if images_dir.exists() and any(images_dir.rglob("*.jpg")):
-            img_count = sum(1 for _ in images_dir.rglob("*.jpg"))
+        if images_dir.exists() and any(
+            p for p in images_dir.rglob("*.jpg") if not p.name.startswith("._")
+        ):
+            img_count = sum(
+                1 for p in images_dir.rglob("*.jpg") if not p.name.startswith("._")
+            )
             print(f"  ✓ {folder_name} already extracted ({img_count:,} images) — skipping")
             continue
 
