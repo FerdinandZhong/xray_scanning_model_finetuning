@@ -55,9 +55,7 @@ jobs:
     parent_job_key: "setup_environment"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
 
-  # Job 2b: Download STCray Dataset (gated — requires HuggingFace token)
-  # HF_TOKEN is injected at job creation time from the GitHub Actions secret — not stored here.
-  # Accept dataset terms first: https://huggingface.co/datasets/Naoufel555/STCray-Dataset
+  # Job 2b: Prepare STCray Dataset (RAR files pulled from Git LFS by setup_environment)
   download_dataset:
     name: "Download STCray Dataset"
     description: "Download STCray dataset from HuggingFace (46k images with 21 threat categories)"
