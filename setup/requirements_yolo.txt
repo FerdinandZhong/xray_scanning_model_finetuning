@@ -28,9 +28,6 @@ seaborn>=0.12.0
 # OpenAI client (for testing)
 openai>=1.0.0
 
-# HuggingFace datasets (for STCray download)
-datasets>=2.16.0
-
 # Utilities
 tqdm
 requests

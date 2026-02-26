@@ -61,19 +61,18 @@ models/*/checkpoint-*
 models/*/pytorch_model.bin
 models/*/model.safetensors
 
-# Data directories (extracted files, not RAR archives)
-data/stcray/train/images/
-data/stcray/test/images/
+# STCray: extracted folders are ignored; RAR files are tracked by Git LFS
 data/stcray_raw/STCray_TrainSet/
 data/stcray_raw/STCray_TestSet/
 data/stcray_raw/STCray_Augmented/
-
-# YOLO formatted datasets (STCray - too large for Git LFS)
-data/yolo_dataset/
-data/yolo_dataset_test/
-data/stcray_raw/
 data/stcray_processed/
 data/stcray/
+data/stcray/train/images/
+data/stcray/test/images/
+
+# YOLO formatted datasets (generated locally, not tracked)
+data/yolo_dataset/
+data/yolo_dataset_test/
 
 # CargoXray dataset (tracked by Git LFS, but excluded from regular git)
 # Uncomment these lines to exclude from git entirely:

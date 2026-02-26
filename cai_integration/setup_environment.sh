@@ -5,7 +5,7 @@ echo "=============================================================="
 echo "Starting X-ray VQA environment setup (with uv - ultra-fast)"
 echo "=============================================================="
 
-# Sync latest code from git (if in git repo)
+# Sync latest code and Git LFS files from repository
 echo "Syncing latest code from repository..."
 cd /home/cdsw
 if [ -d ".git" ]; then
@@ -14,9 +14,24 @@ if [ -d ".git" ]; then
     else
         echo "⚠ Git pull failed (continuing with existing code)"
     fi
+
+    # Pull Git LFS objects (RAR files for STCray dataset)
+    if command -v git-lfs &> /dev/null || git lfs version &> /dev/null 2>&1; then
+        echo "Pulling Git LFS objects (STCray RAR files)..."
+        if git lfs pull; then
+            echo "✓ Git LFS objects pulled"
+        else
+            echo "⚠ Git LFS pull failed (RAR files may already be present)"
+        fi
+    else
+        echo "⚠ git-lfs not installed — skipping LFS pull"
+    fi
 else
     echo "Not a git repository, skipping git sync"
 fi
+
+# STCray archives (.tar.gz) are extracted via Python's built-in tarfile module
+# — no system packages needed.
 
 VENV_PATH="/home/cdsw/.venv"
 

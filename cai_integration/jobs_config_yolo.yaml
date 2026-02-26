@@ -55,9 +55,7 @@ jobs:
     parent_job_key: "setup_environment"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
 
-  # Job 2b: Download STCray Dataset (gated — requires HuggingFace token)
-  # Set HF_TOKEN in the CAI job environment variables (or GitHub Secrets).
-  # Accept dataset terms first: https://huggingface.co/datasets/Naoufel555/STCray-Dataset
+  # Job 2b: Prepare STCray Dataset (RAR files pulled from Git LFS by setup_environment)
   download_dataset:
     name: "Download STCray Dataset"
     description: "Download STCray dataset from HuggingFace (46k images with 21 threat categories)"
@@ -68,8 +66,6 @@ jobs:
     timeout: 3600  # 1 hour for download
     parent_job_key: "setup_environment"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
-    environment:
-      HF_TOKEN: "${HF_TOKEN}"  # HuggingFace token — set in CAI env vars or GitHub Secrets
 
   # Job 2c: Combine Datasets
   # Merges luggage_xray_yolo + STCray into a unified 16-class dataset (~36K+ images).
