@@ -30,32 +30,8 @@ else
     echo "Not a git repository, skipping git sync"
 fi
 
-# Install unrar for STCray RAR extraction
-echo "Checking unrar availability..."
-if ! command -v unrar &> /dev/null; then
-    echo "unrar not found, attempting install..."
-    if command -v apt-get &> /dev/null; then
-        apt-get install -y -q unrar 2>/dev/null || \
-        apt-get install -y -q unrar-free 2>/dev/null || \
-        echo "⚠ apt-get install unrar failed (may need sudo or alternative)"
-    elif command -v yum &> /dev/null; then
-        yum install -y -q unrar 2>/dev/null || \
-        echo "⚠ yum install unrar failed"
-    fi
-    # Fall back to 7z if unrar still unavailable
-    if ! command -v unrar &> /dev/null && ! command -v 7z &> /dev/null; then
-        if command -v apt-get &> /dev/null; then
-            apt-get install -y -q p7zip-full 2>/dev/null || true
-        fi
-    fi
-fi
-if command -v unrar &> /dev/null; then
-    echo "✓ unrar available: $(unrar 2>&1 | head -1)"
-elif command -v 7z &> /dev/null; then
-    echo "✓ 7z available as RAR extraction fallback"
-else
-    echo "⚠ Neither unrar nor 7z found — STCray extraction will fail"
-fi
+# STCray archives (.tar.gz) are extracted via Python's built-in tarfile module
+# — no system packages needed.
 
 VENV_PATH="/home/cdsw/.venv"
 

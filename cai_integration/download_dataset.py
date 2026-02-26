@@ -1,45 +1,36 @@
 #!/usr/bin/env python3
 """
-CAI Job: Prepare STCray dataset from Git LFS RAR files.
+CAI Job: Prepare STCray dataset from Git LFS tar.gz archives.
 
-The RAR files (STCray_TrainSet.rar, STCray_TestSet.rar) are stored in the
-repo via Git LFS and pulled automatically by setup_environment.sh (git lfs pull).
+The archives (STCray_TrainSet.tar.gz, STCray_TestSet.tar.gz) are stored in
+the repo via Git LFS and pulled automatically by setup_environment.sh
+(git lfs pull).  Extraction uses Python's built-in tarfile module — no
+system packages required.
 
 This job:
-  1. Verifies the RAR files are present under data/stcray_raw/
-  2. Extracts them with unrar (installed by setup_environment.sh)
+  1. Verifies the tar.gz files are present under data/stcray_raw/
+  2. Extracts them using Python tarfile (no external tools needed)
   3. Runs data/process_stcray_raw.py to build stcray_processed/annotations.json
 """
 
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 
 
-def extract_rar(rar_path: Path, output_dir: Path, venv_python: Path) -> bool:
-    """Extract a RAR file using unrar (with 7z as fallback)."""
+def extract_tar(tar_path: Path, output_dir: Path) -> bool:
+    """Extract a tar.gz archive using Python's built-in tarfile module."""
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    for cmd in [
-        ["unrar", "x", "-o+", str(rar_path), str(output_dir) + "/"],
-        ["7z", "x", str(rar_path), f"-o{output_dir}", "-y"],
-    ]:
-        tool = cmd[0]
-        check = subprocess.run(["which", tool], capture_output=True)
-        if check.returncode != 0:
-            print(f"  {tool} not found, trying next...")
-            continue
-
-        print(f"  Extracting with {tool}: {rar_path.name} ...")
-        result = subprocess.run(cmd)
-        if result.returncode == 0:
-            print(f"  ✓ Extracted: {rar_path.name}")
-            return True
-        else:
-            print(f"  ✗ {tool} extraction failed (exit {result.returncode})")
-
-    print(f"❌ Could not extract {rar_path.name} — install unrar or p7zip-full")
-    return False
+    print(f"  Extracting: {tar_path.name} → {output_dir} ...")
+    try:
+        with tarfile.open(tar_path, "r:gz") as tar:
+            tar.extractall(path=output_dir)
+        print(f"  ✓ Extracted: {tar_path.name}")
+        return True
+    except Exception as e:
+        print(f"  ❌ Extraction failed: {e}")
+        return False
 
 
 def main():
@@ -57,23 +48,23 @@ def main():
         print("   Ensure setup_environment job has completed successfully")
         sys.exit(1)
 
-    # ── 1. Verify RAR files are present (pulled from Git LFS) ─────
-    print("\n[1/3] Checking RAR files from Git LFS...")
-    rar_files = {
-        "train": raw_dir / "STCray_TrainSet.rar",
-        "test":  raw_dir / "STCray_TestSet.rar",
+    # ── 1. Verify tar.gz archives are present (pulled from Git LFS) ──
+    print("\n[1/3] Checking tar.gz archives from Git LFS...")
+    archives = {
+        "train": raw_dir / "STCray_TrainSet.tar.gz",
+        "test":  raw_dir / "STCray_TestSet.tar.gz",
     }
-    for split, rar_path in rar_files.items():
-        if not rar_path.exists():
-            print(f"❌ RAR not found: {rar_path}")
+    for split, archive_path in archives.items():
+        if not archive_path.exists():
+            print(f"❌ Archive not found: {archive_path}")
             print("   Run 'git lfs pull' to download it from the repository.")
             sys.exit(1)
-        size_mb = rar_path.stat().st_size / (1024 * 1024)
-        print(f"  ✓ {rar_path.name}  ({size_mb:.0f} MB)")
+        size_mb = archive_path.stat().st_size / (1024 * 1024)
+        print(f"  ✓ {archive_path.name}  ({size_mb:.0f} MB)")
 
-    # ── 2. Extract RAR files (skip if already extracted) ──────────
-    print("\n[2/3] Extracting RAR files...")
-    for split, rar_path in rar_files.items():
+    # ── 2. Extract archives (skip if already extracted) ───────────
+    print("\n[2/3] Extracting archives...")
+    for split, archive_path in archives.items():
         folder_name = "STCray_TrainSet" if split == "train" else "STCray_TestSet"
         extract_target = raw_dir / folder_name
         images_dir = extract_target / "Images"
@@ -83,7 +74,7 @@ def main():
             print(f"  ✓ {folder_name} already extracted ({img_count:,} images) — skipping")
             continue
 
-        if not extract_rar(rar_path, raw_dir, venv_python):
+        if not extract_tar(archive_path, raw_dir):
             sys.exit(1)
 
     # ── 3. Build stcray_processed/annotations.json ────────────────
