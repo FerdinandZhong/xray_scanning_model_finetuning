@@ -28,7 +28,7 @@ def train_yolo(
     device: str = '0',
     project: str = 'runs/detect',
     name: str = 'xray_detection',
-    patience: int = 10,  # Early stopping: terminate if no improvement for 10 epochs
+    patience: int = 10,
     save_period: int = 10,
     export_onnx: bool = False,
     # Configurable hyperparameters
@@ -40,6 +40,8 @@ def train_yolo(
     aug_scale: float = 0.3,
     aug_mosaic: float = 0.8,
     aug_mixup: float = 0.0,
+    freeze: int = 0,        # Number of backbone layers to freeze (0 = no freeze)
+    cls_loss: float = 0.5,  # Classification loss weight (increase for class imbalance)
     **kwargs
 ):
     """
@@ -61,6 +63,8 @@ def train_yolo(
         patience: Early stopping patience (epochs)
         save_period: Save checkpoint every N epochs
         export_onnx: Export best model to ONNX after training
+        freeze: Freeze first N backbone layers (0 = disabled; 10 freezes YOLOv8 backbone)
+        cls_loss: Classification loss weight (default 0.5; raise to 1.0–2.0 for imbalanced datasets)
         **kwargs: Additional training arguments
     """
     
@@ -91,9 +95,12 @@ def train_yolo(
     print("Starting training...")
     print("="*70 + "\n")
     
-    # Train the model with X-ray specific augmentations
-    # Configuration optimized for convergence (addresses mAP50=0.2 plateau issue)
-    # Early stopping enabled: training terminates if no mAP50 improvement for 10 epochs
+    # Log key settings before training
+    if freeze > 0:
+        print(f"Backbone freeze: first {freeze} layers locked")
+    print(f"Class loss weight: {cls_loss}")
+    print(f"Early-stop patience: {patience} epochs")
+
     results = model.train(
         data=data_yaml,
         epochs=epochs,
@@ -102,50 +109,49 @@ def train_yolo(
         device=device,
         project=project,
         name=name,
-        patience=patience,  # Early stopping: stop if no improvement for this many epochs
+        patience=patience,
         save_period=save_period,
-        
+        freeze=freeze if freeze > 0 else None,
+
         # X-ray specific augmentations (CONFIGURABLE via parameters)
-        # Default values optimized to prevent model confusion
-        degrees=aug_degrees,    # Rotation augmentation (default: 10.0)
-        translate=aug_translate,# Translation augmentation (default: 0.05)
-        scale=aug_scale,        # Scale augmentation (default: 0.3)
-        shear=3.0,              # Shear augmentation (fixed: 3.0)
-        perspective=0.0003,     # Perspective augmentation (fixed: 0.0003)
-        flipud=0.5,             # Vertical flip (baggage orientation varies)
-        fliplr=0.5,             # Horizontal flip
-        
-        # Mosaic and mixup - CONFIGURABLE to prevent overfitting
-        mosaic=aug_mosaic,      # Mosaic augmentation (default: 0.8)
-        mixup=aug_mixup,        # Mixup augmentation (default: 0.0)
-        
-        # Color augmentations - FIXED (X-ray contrast is important)
-        hsv_h=0.01,             # HSV-Hue augmentation
-        hsv_s=0.5,              # HSV-Saturation augmentation
-        hsv_v=0.3,              # HSV-Value augmentation
-        
-        # CONFIGURABLE: Optimizer settings for better convergence
-        optimizer=optimizer,    # Optimizer type (default: AdamW)
-        lr0=learning_rate,      # Initial learning rate (default: 0.002)
-        lrf=0.001,              # Final learning rate (fixed: 0.001)
-        momentum=0.95,          # SGD momentum (fixed: 0.95)
-        weight_decay=0.0001,    # Weight decay (fixed: 0.0001)
-        warmup_epochs=warmup_epochs,  # Warmup epochs (default: 5.0)
-        warmup_momentum=0.9,    # Warmup momentum (fixed: 0.9)
-        
+        degrees=aug_degrees,
+        translate=aug_translate,
+        scale=aug_scale,
+        shear=3.0,
+        perspective=0.0003,
+        flipud=0.5,
+        fliplr=0.5,
+
+        # Mosaic and mixup
+        mosaic=aug_mosaic,
+        mixup=aug_mixup,
+
+        # Color augmentations (X-ray contrast is important)
+        hsv_h=0.01,
+        hsv_s=0.5,
+        hsv_v=0.3,
+
+        # Optimizer settings
+        optimizer=optimizer,
+        lr0=learning_rate,
+        lrf=0.001,
+        momentum=0.95,
+        weight_decay=0.0001,
+        warmup_epochs=warmup_epochs,
+        warmup_momentum=0.9,
+
         # Loss weights
-        box=7.5,            # Box loss weight
-        cls=0.5,            # Class loss weight
-        dfl=1.5,            # DFL loss weight
-        
+        box=7.5,
+        cls=cls_loss,  # Configurable — raise for class-imbalanced datasets
+        dfl=1.5,
+
         # Other settings
-        plots=False,        # Disable plots to avoid matplotlib backend issues in CAI
-        save=True,          # Save checkpoints
-        val=True,           # Validate during training
-        cache=False,        # Cache images (set to True if enough RAM)
-        workers=8,          # Number of dataloader workers (requires sufficient shared memory)
-        
-        # Override with any additional kwargs
+        plots=False,
+        save=True,
+        val=True,
+        cache=False,
+        workers=8,
+
         **kwargs
     )
     
@@ -343,6 +349,20 @@ def main():
         help='Number of warmup epochs (default: 5.0)'
     )
     
+    # Backbone freeze / loss weights
+    parser.add_argument(
+        '--freeze',
+        type=int,
+        default=0,
+        help='Freeze first N backbone layers (0 = disabled; 10 freezes YOLOv8 backbone)'
+    )
+    parser.add_argument(
+        '--cls-loss',
+        type=float,
+        default=0.5,
+        help='Classification loss weight (default: 0.5; raise to 1.0-2.0 for imbalanced datasets)'
+    )
+
     # Augmentation arguments
     parser.add_argument(
         '--aug-degrees',
@@ -443,7 +463,6 @@ def main():
         patience=args.patience,
         save_period=args.save_period,
         export_onnx=args.export_onnx,
-        # Configurable hyperparameters
         learning_rate=args.learning_rate,
         optimizer=args.optimizer,
         warmup_epochs=args.warmup_epochs,
@@ -452,6 +471,8 @@ def main():
         aug_scale=args.aug_scale,
         aug_mosaic=args.aug_mosaic,
         aug_mixup=args.aug_mixup,
+        freeze=args.freeze,
+        cls_loss=args.cls_loss,
     )
 
 

@@ -29,6 +29,8 @@ Hyperparameter Environment Variables (Optional):
 - AUG_SCALE: Scale augmentation (default: 0.3)
 - AUG_MOSAIC: Mosaic augmentation probability (default: 0.8)
 - AUG_MIXUP: Mixup augmentation probability (default: 0.0)
+- FREEZE_LAYERS: Freeze first N backbone layers (default: 0 = disabled; 10 = YOLOv8 backbone)
+- CLS_LOSS_WEIGHT: Classification loss weight (default: 0.5; raise for class-imbalanced datasets)
 """
 
 import os
@@ -71,6 +73,8 @@ def main():
     aug_scale = float(os.getenv("AUG_SCALE", "0.3"))
     aug_mosaic = float(os.getenv("AUG_MOSAIC", "0.8"))
     aug_mixup = float(os.getenv("AUG_MIXUP", "0.0"))
+    freeze_layers = int(os.getenv("FREEZE_LAYERS", "0"))
+    cls_loss_weight = float(os.getenv("CLS_LOSS_WEIGHT", "0.5"))
     
     print(f"✓ Using Python: {venv_python}")
     print(f"✓ Working directory: {project_root}")
@@ -92,6 +96,8 @@ def main():
     print(f"  Warmup: {warmup_epochs} epochs")
     print(f"  Augmentation: degrees={aug_degrees}, translate={aug_translate}, scale={aug_scale}")
     print(f"  Advanced Aug: mosaic={aug_mosaic}, mixup={aug_mixup}")
+    print(f"  Freeze Layers: {freeze_layers} ({'disabled' if freeze_layers == 0 else 'backbone locked'})")
+    print(f"  Cls Loss Weight: {cls_loss_weight}")
     print()
     
     # Verify dataset exists based on type
@@ -257,8 +263,12 @@ def main():
         "--aug-scale", str(aug_scale),
         "--aug-mosaic", str(aug_mosaic),
         "--aug-mixup", str(aug_mixup),
+        "--cls-loss", str(cls_loss_weight),
     ]
-    
+
+    if freeze_layers > 0:
+        train_cmd += ["--freeze", str(freeze_layers)]
+
     if export_onnx:
         train_cmd.append("--export-onnx")
     

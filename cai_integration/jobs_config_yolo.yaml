@@ -22,6 +22,8 @@
 # - IMG_SIZE: Input image size (default: 640)
 # - EXPORT_ONNX: Export to ONNX (default: false)
 # - VAL_SPLIT: Validation split ratio (default: 0.2)
+# - FREEZE_LAYERS: Freeze first N backbone layers (0 = disabled, 10 = YOLOv8 backbone)
+# - CLS_LOSS_WEIGHT: Classification loss weight (default 0.5; raise for imbalanced data)
 #
 # Job Dependencies (handled automatically by CAI):
 # - setup_environment (root) → download_luggage_xray + download_dataset → combine_datasets → yolo_training
@@ -83,8 +85,8 @@ jobs:
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       OUTPUT_NAME: "combined_xray_yolo"  # Output dir under data/
-      MAX_PER_CLASS: "0"    # 0 = no cap; set e.g. "3000" to balance classes
-      FORCE_REBUILD: "false"  # Set "true" to delete and rebuild existing dataset
+      MAX_PER_CLASS: "2000"  # Cap images per class to balance the dataset; 0 = no cap
+      FORCE_REBUILD: "true"  # Rebuild since MAX_PER_CLASS changed; set "false" after first run
       INCLUDE_LUGGAGE: "true"
       INCLUDE_STCRAY: "true"
 
@@ -107,13 +109,13 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   yolo_training:
     name: "Train YOLO Detection Model"
-    description: "Train YOLO object detection model with early stopping (terminates after 10 epochs without improvement)"
+    description: "Train YOLO object detection model with early stopping and backbone freezing"
     script: "cai_integration/yolo_training.py"
     kernel: "python3"
     cpu: 8
     memory: 32
     gpu: 1
-    timeout: 14400  # 4 hours (sufficient for 200 epochs + yolov8m)
+    timeout: 108000  # 30 hours — combined dataset at 200 epochs takes ~27 hrs
     # Fixed parent — combine_datasets is a no-op when dataset already exists,
     # so this dependency costs nothing on PATH A (luggage_xray) runs.
     parent_job_key: "combine_datasets"
@@ -122,7 +124,7 @@ jobs:
       # ── Switch training path via this single env var ─────────────────────
       # PATH A (YOLO-only):  luggage_xray
       # PATH B (Combined):   combined_xray_yolo
-      DATASET: "luggage_xray"
+      DATASET: "combined_xray_yolo"
 
       MODEL_NAME: "yolov8m.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
       EPOCHS: "200"             # Max epochs (early stop if no improvement)
@@ -131,11 +133,18 @@ jobs:
       EXPORT_ONNX: "false"      # Set "true" to export ONNX for production
       VAL_SPLIT: "0.2"          # Only used for stcray dataset
 
-      # Hyperparameters (optimised for yolov8m)
-      LEARNING_RATE: "0.003"    # 0.003 for yolov8m, 0.002 for yolov8x
+      # Hyperparameters (optimised for combined dataset run 2)
+      LEARNING_RATE: "0.001"    # Lowered from 0.003; more stable with frozen backbone
       OPTIMIZER: "AdamW"        # SGD | Adam | AdamW
-      PATIENCE: "10"            # Early-stop after N epochs without mAP50 gain
+      PATIENCE: "20"            # Increased from 10; gives plateau more room to resolve
       WARMUP_EPOCHS: "5.0"
+
+      # Backbone freezing — keeps ImageNet features intact while head learns X-ray patterns
+      # 10 = freeze YOLOv8 backbone (layers 0-9); 0 = disabled
+      FREEZE_LAYERS: "10"
+
+      # Class loss weight — raised to improve class discrimination on balanced dataset
+      CLS_LOSS_WEIGHT: "1.5"    # Default 0.5; increase when cls_loss is dominant
 
       # Augmentation
       AUG_DEGREES: "10.0"       # Rotation (0–30°)
