@@ -70,12 +70,13 @@ jobs:
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
 
   # Job 2c: Combine Datasets
-  # Merges luggage_xray_yolo + STCray into a unified 16-class dataset (~36K+ images).
+  # Merges luggage_xray_yolo + STCray into a unified 26-class dataset (~50K+ images).
+  # Includes all detectable objects — not just weapons/threats.
   # Always runs before yolo_training; skips instantly when dataset already exists (FORCE_REBUILD=false).
   # Prerequisites: download_luggage_xray AND download_dataset must both complete first.
   combine_datasets:
     name: "Combine X-ray Datasets"
-    description: "Merge luggage_xray (6K) + STCray threats (30K) into unified 16-class YOLO dataset (~32K+ images)"
+    description: "Merge luggage_xray (6K, 12 classes) + STCray (30K, 22 classes) into unified 26-class YOLO dataset (~50K images)"
     script: "cai_integration/combine_datasets.py"
     kernel: "python3"
     cpu: 8   # High CPU for parallel image copying
@@ -99,7 +100,7 @@ jobs:
   # (FORCE_REBUILD=false), so it adds negligible overhead on PATH A runs.
   #
   #  PATH A  DATASET=luggage_xray        6,164 imgs · 12 classes · fastest
-  #  PATH B  DATASET=combined_xray_yolo  36K+ imgs  · 16 classes · accurate
+  #  PATH B  DATASET=combined_xray_yolo  50K+ imgs  · 26 classes · full object detection
   #
   # Change DATASET in the CAI job's environment variables page (no redeploy).
   #

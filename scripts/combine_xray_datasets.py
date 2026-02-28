@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """
-Combine X-ray datasets for improved YOLO training.
+Combine X-ray datasets for object detection training.
 
 Merges luggage_xray_yolo (6,164 images, 12 classes) with STCray
-(30,044 images, 24 threat categories), mapping compatible threat classes
-to create a larger unified dataset.
+(30,044 images, 24 categories) into a unified 27-class dataset covering
+all detectable objects in X-ray baggage scans — not just threats.
 
 Source datasets:
-  - luggage_xray_yolo:   6,164 train + 956 val  (12 classes, all threats)
-  - stcray_processed:   30,044 train + 16,598 test (24 categories, threats only used)
+  - luggage_xray_yolo:   6,164 train + 956 val  (12 classes)
+  - stcray_processed:   30,044 train + 16,598 test (22 mapped categories, 2 skipped)
+
+Skipped STCray categories:
+  - "Non Threat":        meta-label with no specific object identity
+  - "Multilabel Threat": ambiguous multi-object label
 
 Output:
-  - data/combined_xray_yolo/  ~32K+ train images, unified class set
+  - data/combined_xray_yolo/  ~50K+ images, 27 classes
 
 Usage:
   python scripts/combine_xray_datasets.py              # default: luggage + stcray
@@ -41,52 +45,55 @@ LUGGAGE_CLASSES = [
     "SwissArmyKnife", "Tin", "VacuumCup",
 ]
 
-# Additional threat classes from STCray not already in luggage_xray
+# All additional object classes from STCray not already in luggage_xray.
+# Includes both weapons and everyday carry items — all detectable objects.
 STCRAY_EXTRA_CLASSES = [
+    # Weapons / classic threats
     "Gun", "Bullet", "Explosive", "Handcuffs",
+    # Everyday items detectable on X-ray
+    "Battery", "Hammer", "Lighter", "NailCutter",
+    "Pliers", "Powerbank", "Screwdriver", "ShavingRazor",
+    "Syringe", "Wrench",
 ]
 
-# Full unified class list: luggage classes + stcray extras
+# Full unified class list: 12 luggage + 14 STCray = 26 classes
 UNIFIED_CLASSES = LUGGAGE_CLASSES + STCRAY_EXTRA_CLASSES
-
-THREAT_CLASSES = {
-    "blade", "dagger", "knife", "scissors", "SwissArmyKnife",
-    "Gun", "Bullet", "Explosive", "Handcuffs",
-}
 
 # ─────────────────────────────────────────────
 # STCray → unified class mapping
 # ─────────────────────────────────────────────
-# Maps STCray category name to unified class name (None = skip this category)
+# Maps STCray category name → unified class name (None = skip this category).
+# Only "Non Threat" and "Multilabel Threat" are skipped — they are meta-labels
+# with no specific object identity, not real object categories.
 STCRAY_CLASS_MAP: Dict[str, Optional[str]] = {
-    # Direct matches
+    # Sharp cutting tools
     "Knife":            "knife",
     "Scissors":         "scissors",
     "Blade":            "blade",
-    # Close-enough mappings (sharp cutting tools)
-    "Cutter":           "blade",
-    "Other Sharp Item": "blade",
-    # Unique STCray threats added to unified set
+    "Cutter":           "blade",        # box-cutter / utility knife
+    "Other Sharp Item": "blade",        # generic sharp item
+    # Weapons
     "Gun":              "Gun",
     "3D printed gun":   "Gun",
     "3D Gun":           "Gun",
     "Bullet":           "Bullet",
     "Explosive":        "Explosive",
     "Handcuffs":        "Handcuffs",
-    # Skip: no equivalent in luggage task scope
-    "Battery":          None,
-    "Wrench":           None,
-    "Hammer":           None,
-    "Screwdriver":      None,
-    "Pliers":           None,
-    "Powerbank":        None,
-    "Nail Cutter":      None,
-    "Shaving Razor":    None,
-    "Injection":        None,
-    "Syringe":          None,
-    "Lighter":          None,
+    # Everyday carry items
+    "Battery":          "Battery",
+    "Hammer":           "Hammer",
+    "Injection":        "Syringe",      # same object class — merge
+    "Lighter":          "Lighter",
+    "Nail Cutter":      "NailCutter",
+    "Pliers":           "Pliers",
+    "Powerbank":        "Powerbank",
+    "Screwdriver":      "Screwdriver",
+    "Shaving Razor":    "ShavingRazor",
+    "Syringe":          "Syringe",
+    "Wrench":           "Wrench",
+    # Meta-labels: no specific object — skip
     "Non Threat":       None,
-    "Multilabel Threat": None,  # ambiguous, skip
+    "Multilabel Threat": None,
 }
 
 
@@ -306,7 +313,7 @@ def build_combined_dataset(
     print("COMBINING X-RAY DATASETS")
     print("=" * 65)
     print(f"\nOutput:   {out_root}")
-    print(f"Classes:  {len(UNIFIED_CLASSES)}")
+    print(f"Classes:  {len(UNIFIED_CLASSES)} (all objects, no threat filtering)")
     print(f"  Base (luggage_xray): {LUGGAGE_CLASSES}")
     print(f"  Extra (stcray):      {STCRAY_EXTRA_CLASSES}")
     print(f"Dry run:  {dry_run}")
@@ -337,7 +344,7 @@ def build_combined_dataset(
     copy_luggage_xray(lug_root, out_root, class_id_offset=0, stats=stats, dry_run=dry_run)
 
     # ── 2. Convert STCray ────────────────────────────────────────
-    print("\n[2/2] Converting STCray (threat classes only)...")
+    print("\n[2/2] Converting STCray (all object classes)...")
 
     stcray_train_ann = stcray_root / "train" / "annotations.json"
     stcray_test_ann  = stcray_root / "test"  / "annotations.json"
@@ -358,12 +365,11 @@ def build_combined_dataset(
 
     # ── Write data.yaml ──────────────────────────────────────────
     data_yaml = {
-        "path":   str(out_root.absolute()),
-        "train":  "images/train",
-        "val":    "images/valid",
-        "nc":     len(UNIFIED_CLASSES),
-        "names":  UNIFIED_CLASSES,
-        "threats": sorted(THREAT_CLASSES),
+        "path":    str(out_root.absolute()),
+        "train":   "images/train",
+        "val":     "images/valid",
+        "nc":      len(UNIFIED_CLASSES),
+        "names":   UNIFIED_CLASSES,
         "sources": ["luggage_xray_yolo", "stcray_processed"],
     }
     if not dry_run:
@@ -384,12 +390,11 @@ def build_combined_dataset(
     print(f"\n  Output: {out_root}")
 
     print("\n── Per-class instance counts ────────────────────────────")
-    print(f"  {'Class':<22}  {'Train':>6}  {'Val':>5}  {'Threat':>6}")
+    print(f"  {'Class':<22}  {'Train':>6}  {'Val':>5}")
     for cls in UNIFIED_CLASSES:
         tr = stats[f"train/{cls}"]
         va = stats[f"valid/{cls}"]
-        t  = "✅" if cls in THREAT_CLASSES else ""
-        print(f"  {cls:<22}  {tr:6d}  {va:5d}  {t}")
+        print(f"  {cls:<22}  {tr:6d}  {va:5d}")
 
     print(f"\n  data.yaml: {out_root / 'data.yaml'}")
     print("\n── Training command ─────────────────────────────────────")
@@ -445,8 +450,7 @@ Examples:
     if args.classes_only:
         print("Unified classes:")
         for i, cls in enumerate(UNIFIED_CLASSES):
-            threat = " ← THREAT" if cls in THREAT_CLASSES else ""
-            print(f"  {i:2d}  {cls}{threat}")
+            print(f"  {i:2d}  {cls}")
         print(f"\nSTCray mapping:")
         for src, dst in sorted(STCRAY_CLASS_MAP.items()):
             print(f"  {src:<25} → {dst or '(skip)'}")

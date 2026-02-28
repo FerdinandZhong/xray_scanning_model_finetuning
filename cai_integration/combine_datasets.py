@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-CAI Job: Combine X-ray Datasets for Improved YOLO Training.
+CAI Job: Combine X-ray Datasets for Object Detection Training.
 
 Merges luggage_xray_yolo (6,164 images, 12 classes) with STCray
-(30,044 images, threat classes only) into a unified 16-class YOLO dataset.
+(30,044 images, 22 object classes) into a unified 26-class YOLO dataset
+covering all detectable objects in X-ray baggage scans.
 
 Environment Variables:
 - OUTPUT_NAME:        Output dataset name under data/ (default: combined_xray_yolo)
