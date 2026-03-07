@@ -8,14 +8,17 @@ all detectable objects in X-ray baggage scans — not just threats.
 
 Source datasets:
   - luggage_xray_yolo:   6,164 train + 956 val  (12 classes)
-  - stcray_processed:   30,044 train + 16,598 test (22 mapped categories, 2 skipped)
+  - stcray_processed:   30,044 train (22 mapped categories, 2 skipped)
+    ↳ STCray train split used for both train and val (stratified by class, 10% val)
+    ↳ STCray test set intentionally excluded — different scanner conditions cause
+      domain shift that makes validation cls_loss meaningless
 
 Skipped STCray categories:
   - "Non Threat":        meta-label with no specific object identity
   - "Multilabel Threat": ambiguous multi-object label
 
 Output:
-  - data/combined_xray_yolo/  ~50K+ images, 27 classes
+  - data/combined_xray_yolo/  ~32K train + ~5K val, 26 classes
 
 Usage:
   python scripts/combine_xray_datasets.py              # default: luggage + stcray
@@ -165,86 +168,75 @@ def copy_luggage_xray(
         print(f"  {split:5s}: {copied:5d} images")
 
 
-def convert_stcray(
+def select_stcray_entries(
     ann_file: Path,
-    raw_images_root: Path,
-    out_root: Path,
-    out_split: str,
-    stats: Counter,
-    dry_run: bool = False,
     max_per_class: Optional[int] = None,
-) -> int:
+) -> Dict[str, List[dict]]:
     """
-    Convert STCray annotations to YOLO format and copy images.
-
-    Args:
-        ann_file:        Path to stcray_processed/{split}/annotations.json
-        raw_images_root: Root dir containing Class XX_Name/image.jpg
-        out_root:        Combined dataset root
-        out_split:       "train" or "valid"
-        stats:           Counter for tracking instances added
-        dry_run:         Print only, don't write files
-        max_per_class:   Cap images per mapped class (balance dataset)
+    Load STCray annotations, apply per-class cap, and return a dict of
+    { mapped_class_name: [entry, ...] } ready for train/val splitting.
+    Entries that map to None (skipped categories) are excluded.
     """
     if not ann_file.exists():
-        print(f"  ⚠ {ann_file} not found, skipping")
-        return 0
+        return {}
 
     with open(ann_file) as f:
         data = json.load(f)
 
-    class_to_id = {name: i for i, name in enumerate(UNIFIED_CLASSES)}
-    out_img_dir = out_root / "images" / out_split
-    out_lbl_dir = out_root / "labels" / out_split
-
-    # Group entries by mapped class for optional capping
     class_buckets: Dict[str, List[dict]] = defaultdict(list)
+    seen_ids: set = set()
     for entry in data:
+        if entry["image_id"] in seen_ids:
+            continue
         for cat in entry["categories"]:
             mapped = STCRAY_CLASS_MAP.get(cat)
             if mapped is not None:
                 class_buckets[mapped].append(entry)
-                break  # one image → one class bucket
+                seen_ids.add(entry["image_id"])
+                break
 
-    # Apply per-class cap
-    selected = []
-    for mapped_cls, entries in class_buckets.items():
-        if max_per_class and len(entries) > max_per_class:
-            entries = random.sample(entries, max_per_class)
-        selected.extend(entries)
+    if max_per_class:
+        class_buckets = {
+            cls: random.sample(entries, max_per_class) if len(entries) > max_per_class else entries
+            for cls, entries in class_buckets.items()
+        }
 
-    # Deduplicate (some entries may appear in multiple buckets above)
-    seen_ids = set()
-    unique = []
-    for entry in selected:
-        if entry["image_id"] not in seen_ids:
-            seen_ids.add(entry["image_id"])
-            unique.append(entry)
+    return class_buckets
 
-    random.shuffle(unique)
+
+def write_stcray_split(
+    entries: List[dict],
+    out_root: Path,
+    out_split: str,
+    stats: Counter,
+    dry_run: bool = False,
+) -> int:
+    """
+    Convert a list of STCray entries to YOLO format and copy into out_split.
+    Returns number of images successfully written.
+    """
+    class_to_id = {name: i for i, name in enumerate(UNIFIED_CLASSES)}
+    out_img_dir = out_root / "images" / out_split
+    out_lbl_dir = out_root / "labels" / out_split
+
     converted = 0
     skipped_no_img = 0
     skipped_no_bbox = 0
 
-    for entry in unique:
-        # Resolve absolute image path
+    for entry in entries:
         img_abs = Path(entry["image_path_absolute"])
         if not img_abs.exists():
-            # Try relative to project root
             img_abs = Path(entry["image_path_absolute"].lstrip("/"))
         if not img_abs.exists():
             skipped_no_img += 1
             continue
 
-        # Map all category labels for this image
-        yolo_lines = []
         try:
             img_w, img_h = get_image_size(img_abs)
         except Exception:
             skipped_no_img += 1
             continue
 
-        # Each entry has one primary category and bboxes
         primary_cats = [
             STCRAY_CLASS_MAP.get(c) for c in entry["categories"]
             if STCRAY_CLASS_MAP.get(c) is not None
@@ -258,6 +250,7 @@ def convert_stcray(
             skipped_no_bbox += 1
             continue
 
+        yolo_lines = []
         for bbox, mapped_cls in zip(bboxes, primary_cats * len(bboxes)):
             cid = class_to_id[mapped_cls]
             cx, cy, nw, nh = bbox_to_yolo(bbox, img_w, img_h)
@@ -343,25 +336,39 @@ def build_combined_dataset(
     print("\n[1/2] Copying luggage_xray_yolo...")
     copy_luggage_xray(lug_root, out_root, class_id_offset=0, stats=stats, dry_run=dry_run)
 
-    # ── 2. Convert STCray ────────────────────────────────────────
-    print("\n[2/2] Converting STCray (all object classes)...")
+    # ── 2. Convert STCray — stratified train/val split from TRAIN annotations only
+    # The STCray test set is NOT used here: it was collected under different scanner
+    # conditions and caused a massive domain gap (val_cls_loss ~10x train_cls_loss).
+    # Splitting the train annotations keeps train and val in the same distribution.
+    print("\n[2/2] Converting STCray (all object classes, stratified train/val split)...")
 
     stcray_train_ann = stcray_root / "train" / "annotations.json"
-    stcray_test_ann  = stcray_root / "test"  / "annotations.json"
 
-    # STCray train → combined train
-    print(f"\n── STCray train ────────────────────────────────────────")
-    convert_stcray(
-        stcray_train_ann, stcray_raw, out_root, "train",
-        stats, dry_run, max_stcray_per_class,
-    )
+    print(f"  Selecting entries (max_per_class={max_stcray_per_class or 'none'})...")
+    class_buckets = select_stcray_entries(stcray_train_ann, max_stcray_per_class)
 
-    # STCray test  → combined valid (provides extra validation diversity)
-    print(f"\n── STCray test (used as additional validation) ─────────")
-    convert_stcray(
-        stcray_test_ann, stcray_raw, out_root, "valid",
-        stats, dry_run, max_stcray_per_class,
-    )
+    # Stratified split: val_ratio of each class → valid, remainder → train
+    stcray_train_entries: List[dict] = []
+    stcray_val_entries:   List[dict] = []
+    for cls, entries in class_buckets.items():
+        random.shuffle(entries)
+        n_val = max(1, int(len(entries) * val_ratio))
+        stcray_val_entries.extend(entries[:n_val])
+        stcray_train_entries.extend(entries[n_val:])
+
+    random.shuffle(stcray_train_entries)
+    random.shuffle(stcray_val_entries)
+
+    total_stcray = sum(len(v) for v in class_buckets.values())
+    print(f"  STCray entries: {total_stcray:,}  →  "
+          f"train {len(stcray_train_entries):,} / val {len(stcray_val_entries):,} "
+          f"({val_ratio:.0%} val per class)")
+
+    print(f"\n── STCray → train ──────────────────────────────────────")
+    write_stcray_split(stcray_train_entries, out_root, "train", stats, dry_run)
+
+    print(f"\n── STCray → valid (same-distribution split) ────────────")
+    write_stcray_split(stcray_val_entries, out_root, "valid", stats, dry_run)
 
     # ── Write data.yaml ──────────────────────────────────────────
     data_yaml = {

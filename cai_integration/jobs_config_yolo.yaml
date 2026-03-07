@@ -134,18 +134,18 @@ jobs:
       EXPORT_ONNX: "false"      # Set "true" to export ONNX for production
       VAL_SPLIT: "0.2"          # Only used for stcray dataset
 
-      # Hyperparameters (optimised for combined dataset run 2)
-      LEARNING_RATE: "0.001"    # Lowered from 0.003; more stable with frozen backbone
-      OPTIMIZER: "AdamW"        # SGD | Adam | AdamW
-      PATIENCE: "20"            # Increased from 10; gives plateau more room to resolve
+      # Hyperparameters (run 4: full unfreeze, val split fix)
+      LEARNING_RATE: "0.001"
+      OPTIMIZER: "AdamW"
+      PATIENCE: "20"
       WARMUP_EPOCHS: "5.0"
 
-      # Backbone freezing — keeps ImageNet features intact while head learns X-ray patterns
-      # 10 = freeze YOLOv8 backbone (layers 0-9); 0 = disabled
-      FREEZE_LAYERS: "10"
+      # Backbone: fully unfrozen — val distribution is now same as train so
+      # the backbone can safely adapt to X-ray features from scratch
+      FREEZE_LAYERS: "0"
 
-      # Class loss weight — raised to improve class discrimination on balanced dataset
-      CLS_LOSS_WEIGHT: "1.5"    # Default 0.5; increase when cls_loss is dominant
+      # Class loss weight — kept at 1.5 for balanced-class discrimination
+      CLS_LOSS_WEIGHT: "1.5"
 
       # Augmentation
       AUG_DEGREES: "10.0"       # Rotation (0–30°)
