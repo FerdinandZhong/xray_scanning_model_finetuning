@@ -127,9 +127,9 @@ jobs:
       # PATH B (Combined):   combined_xray_yolo
       DATASET: "combined_xray_yolo"
 
-      MODEL_NAME: "yolov8m.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
+      MODEL_NAME: "yolov8x.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
       EPOCHS: "200"             # Max epochs (early stop if no improvement)
-      BATCH_SIZE: "16"          # 16 for yolov8m, 8 for yolov8x, 32 for yolov8n/s
+      BATCH_SIZE: "8"           # 8 for yolov8x (2x params vs yolov8m, halve batch)
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"      # Set "true" to export ONNX for production
       VAL_SPLIT: "0.2"          # Only used for stcray dataset
