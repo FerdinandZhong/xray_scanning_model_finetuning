@@ -163,7 +163,7 @@ jobs:
 
       MODEL_NAME: "yolo26x.pt"  # yolov8x | yolo11x | yolo12x | yolo26x (latest)
       EPOCHS: "200"             # Max epochs (early stop if no improvement)
-      BATCH_SIZE: "16"          # 16 for xray_baggage (small dataset, larger batch ok)
+      BATCH_SIZE: "-1"          # -1 = Ultralytics auto-batch (maximises GPU VRAM safely)
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"      # Set "true" to export ONNX for production
       VAL_SPLIT: "0.2"          # Only used for stcray dataset
