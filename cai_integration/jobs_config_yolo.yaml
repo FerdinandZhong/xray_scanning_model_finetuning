@@ -1,32 +1,42 @@
 # X-ray YOLO Detection Jobs Configuration
 #
-# This configuration defines the job sequence for YOLO-based X-ray detection on CAI:
-# 1. setup_environment: Create Python venv and install dependencies (PyTorch, Ultralytics, etc.)
-# 2. download_dataset: Download STCray dataset from HuggingFace
-# 3. yolo_training: Convert data to YOLO format and train YOLO model
+# Job sequence:
+#   setup_environment
+#     ├── download_luggage_xray
+#     ├── download_dataset        (STCray, via Git LFS)
+#     └── download_xray_baggage   (X-Ray Baggage COCO, via Git LFS)
+#           └── combine_datasets  (depends on download_luggage_xray; STCray + baggage assumed ready)
+#                 └── yolo_training
 #
-# Key Differences from VLM Approach:
-# - No VQA generation needed (direct bbox training)
-# - Much faster training (hours vs days)
-# - Smaller model size (11-47MB vs 14GB)
-# - Lower resource requirements (2-8GB VRAM vs 16GB+)
+# Supported YOLO model families (set MODEL_NAME env var):
+#   YOLOv8  : yolov8n.pt  yolov8s.pt  yolov8m.pt  yolov8l.pt  yolov8x.pt
+#   YOLO11  : yolo11n.pt  yolo11s.pt  yolo11m.pt  yolo11l.pt  yolo11x.pt
+#   YOLO12  : yolo12n.pt  yolo12s.pt  yolo12m.pt  yolo12l.pt  yolo12x.pt
+#   YOLO26  : yolo26n.pt  yolo26s.pt  yolo26m.pt  yolo26l.pt  yolo26x.pt  ← latest (Sep 2025)
+#             NMS-free inference, no DFL loss, MuSGD optimizer, 43% faster CPU
+#             Note: dfl_loss column will be 0/absent in results.csv for YOLO26
+#   (All families share the same Ultralytics training API — just change the .pt filename)
+#
+#   Model size guide:  n=nano  s=small  m=medium  l=large  x=extra-large
+#   Batch size guide:  x→8    l→12     m→16      s→32     n→64
 #
 # Environment Variables:
-# - FORCE_REINSTALL:  Set to "true" to force full environment reinstall (default: "false")
-# - OUTPUT_NAME:      Combined dataset name under data/ (default: combined_xray_yolo)
-# - MAX_PER_CLASS:    Cap STCray images per class, 0 = no cap (default: 0)
-# - FORCE_REBUILD:    Rebuild combined dataset even if it exists (default: false)
-# - MODEL_NAME: YOLO model variant (yolov8n, yolov8s, yolov8m, yolov11n, default: yolov8n.pt)
-# - EPOCHS: Training epochs (default: 100)
-# - BATCH_SIZE: Batch size (default: 16)
-# - IMG_SIZE: Input image size (default: 640)
-# - EXPORT_ONNX: Export to ONNX (default: false)
-# - VAL_SPLIT: Validation split ratio (default: 0.2)
+# - FORCE_REINSTALL:    Force full environment reinstall (default: false)
+# - OUTPUT_NAME:        Combined dataset name under data/ (default: combined_xray_yolo)
+# - MAX_PER_CLASS:      Cap STCray images per class, 0 = no cap (default: 0)
+# - FORCE_REBUILD:      Rebuild combined dataset even if it exists (default: false)
+# - INCLUDE_BAGGAGE:    Include X-Ray Baggage source in combined dataset (default: true)
+# - MODEL_NAME:         YOLO model (yolov8x.pt | yolo11x.pt | yolo12x.pt, etc.)
+# - EPOCHS:             Max training epochs (default: 200)
+# - BATCH_SIZE:         Batch size (default: 8 for x-models)
+# - IMG_SIZE:           Input image size (default: 640)
+# - FREEZE_LAYERS:      Freeze first N backbone layers (0 = disabled)
+# - CLS_LOSS_WEIGHT:    Classification loss weight (default: 1.5)
+# - PATIENCE:           Early-stop patience epochs (default: 20)
 #
-# Job Dependencies (handled automatically by CAI):
-# - setup_environment (root) → download_luggage_xray + download_dataset → combine_datasets → yolo_training
-# - combine_datasets is optional: skip it and set parent_job_key on yolo_training to download_luggage_xray
-# - When parent job succeeds, child jobs auto-trigger automatically
+# Job Dependencies (auto-triggered by CAI on parent success):
+#   setup_environment → {download_luggage_xray, download_dataset, download_xray_baggage}
+#                     → combine_datasets → yolo_training
 
 jobs:
   # Job 1: Setup Python Environment (ROOT JOB)
@@ -42,6 +52,11 @@ jobs:
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       FORCE_REINSTALL: "false"
+      # Pre-trained YOLO weights to download during setup (saved to /home/cdsw/<model>.pt)
+      # Must match MODEL_NAME in the yolo_training job — change both together.
+      # Set SKIP_MODEL_DOWNLOAD=true if the weights are already present on the workspace.
+      YOLO_MODEL_NAME: "yolo26x.pt"   # yolov8x | yolo11x | yolo12x | yolo26x
+      SKIP_MODEL_DOWNLOAD: "false"
 
   # Job 2a: Download Luggage X-ray Dataset (Optional - for luggage_xray dataset)
   download_luggage_xray:
@@ -67,13 +82,31 @@ jobs:
     parent_job_key: "setup_environment"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
 
-  # Job 2c: Combine Datasets
-  # Merges luggage_xray_yolo + STCray into a unified 16-class dataset (~36K+ images).
+  # Job 2c: Process X-Ray Baggage COCO dataset
+  # Extracts data/X-Ray Baggage.coco.zip (Git LFS) and converts to YOLO format.
+  # 1,569 images, 5 classes: Gun, Knife, Pliers, Scissors, Wrench
+  download_xray_baggage:
+    name: "Process X-Ray Baggage Dataset"
+    description: "Extract and convert X-Ray Baggage COCO zip to YOLO format (1,569 images, 5 classes)"
+    script: "cai_integration/download_xray_baggage.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 8
+    timeout: 1800  # 30 minutes
+    parent_job_key: "setup_environment"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      VAL_RATIO: "0.1"
+      FORCE_REPROCESS: "false"
+
+  # Job 2d: Combine Datasets
+  # Merges luggage_xray_yolo + STCray into a unified 26-class dataset (~50K+ images).
+  # Includes all detectable objects — not just weapons/threats.
   # Always runs before yolo_training; skips instantly when dataset already exists (FORCE_REBUILD=false).
   # Prerequisites: download_luggage_xray AND download_dataset must both complete first.
   combine_datasets:
     name: "Combine X-ray Datasets"
-    description: "Merge luggage_xray (6K) + STCray threats (30K) into unified 16-class YOLO dataset (~32K+ images)"
+    description: "Merge luggage_xray (6K, 12 classes) + STCray (30K, 22 classes) into unified 26-class YOLO dataset (~50K images)"
     script: "cai_integration/combine_datasets.py"
     kernel: "python3"
     cpu: 8   # High CPU for parallel image copying
@@ -83,10 +116,11 @@ jobs:
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       OUTPUT_NAME: "combined_xray_yolo"  # Output dir under data/
-      MAX_PER_CLASS: "0"    # 0 = no cap; set e.g. "3000" to balance classes
-      FORCE_REBUILD: "false"  # Set "true" to delete and rebuild existing dataset
+      MAX_PER_CLASS: "2000"   # Cap per class for balance; 0 = no cap
+      FORCE_REBUILD: "true"   # Set "false" after first successful run
       INCLUDE_LUGGAGE: "true"
       INCLUDE_STCRAY: "true"
+      INCLUDE_BAGGAGE: "true" # Include X-Ray Baggage COCO source (~1.5K extra images)
 
   # ──────────────────────────────────────────────────────────────────────────
   # Job 3: YOLO Training
@@ -97,7 +131,7 @@ jobs:
   # (FORCE_REBUILD=false), so it adds negligible overhead on PATH A runs.
   #
   #  PATH A  DATASET=luggage_xray        6,164 imgs · 12 classes · fastest
-  #  PATH B  DATASET=combined_xray_yolo  36K+ imgs  · 16 classes · accurate
+  #  PATH B  DATASET=combined_xray_yolo  50K+ imgs  · 26 classes · full object detection
   #
   # Change DATASET in the CAI job's environment variables page (no redeploy).
   #
@@ -107,35 +141,45 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────
   yolo_training:
     name: "Train YOLO Detection Model"
-    description: "Train YOLO object detection model with early stopping (terminates after 10 epochs without improvement)"
+    description: "Train YOLO object detection model with early stopping and backbone freezing"
     script: "cai_integration/yolo_training.py"
     kernel: "python3"
     cpu: 8
     memory: 32
     gpu: 1
-    timeout: 14400  # 4 hours (sufficient for 200 epochs + yolov8m)
-    # Fixed parent — combine_datasets is a no-op when dataset already exists,
-    # so this dependency costs nothing on PATH A (luggage_xray) runs.
-    parent_job_key: "combine_datasets"
+    timeout: 108000  # 30 hours — combined dataset at 200 epochs takes ~27 hrs
+    # parent_job_key controls which upstream job must complete first:
+    #   xray_baggage only  → "download_xray_baggage"
+    #   combined dataset   → "combine_datasets"
+    #   luggage_xray only  → "download_luggage_xray"
+    parent_job_key: "download_xray_baggage"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       # ── Switch training path via this single env var ─────────────────────
       # PATH A (YOLO-only):  luggage_xray
       # PATH B (Combined):   combined_xray_yolo
-      DATASET: "luggage_xray"
+      # PATH C (Baggage):    xray_baggage
+      DATASET: "xray_baggage"
 
-      MODEL_NAME: "yolov8m.pt"  # yolov8n, yolov8s, yolov8m, yolov8x, yolov11n
+      MODEL_NAME: "yolo26x.pt"  # yolov8x | yolo11x | yolo12x | yolo26x (latest)
       EPOCHS: "200"             # Max epochs (early stop if no improvement)
-      BATCH_SIZE: "16"          # 16 for yolov8m, 8 for yolov8x, 32 for yolov8n/s
+      BATCH_SIZE: "16"          # 16 for xray_baggage (small dataset, larger batch ok)
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"      # Set "true" to export ONNX for production
       VAL_SPLIT: "0.2"          # Only used for stcray dataset
 
-      # Hyperparameters (optimised for yolov8m)
-      LEARNING_RATE: "0.003"    # 0.003 for yolov8m, 0.002 for yolov8x
-      OPTIMIZER: "AdamW"        # SGD | Adam | AdamW
-      PATIENCE: "10"            # Early-stop after N epochs without mAP50 gain
+      # Hyperparameters (run 4: full unfreeze, val split fix)
+      LEARNING_RATE: "0.001"
+      OPTIMIZER: "AdamW"
+      PATIENCE: "20"
       WARMUP_EPOCHS: "5.0"
+
+      # Backbone: fully unfrozen — val distribution is now same as train so
+      # the backbone can safely adapt to X-ray features from scratch
+      FREEZE_LAYERS: "0"
+
+      # Class loss weight — kept at 1.5 for balanced-class discrimination
+      CLS_LOSS_WEIGHT: "1.5"
 
       # Augmentation
       AUG_DEGREES: "10.0"       # Rotation (0–30°)

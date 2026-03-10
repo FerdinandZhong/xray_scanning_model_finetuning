@@ -29,6 +29,8 @@ Hyperparameter Environment Variables (Optional):
 - AUG_SCALE: Scale augmentation (default: 0.3)
 - AUG_MOSAIC: Mosaic augmentation probability (default: 0.8)
 - AUG_MIXUP: Mixup augmentation probability (default: 0.0)
+- FREEZE_LAYERS: Freeze first N backbone layers (default: 0 = disabled; 10 = YOLOv8 backbone)
+- CLS_LOSS_WEIGHT: Classification loss weight (default: 0.5; raise for class-imbalanced datasets)
 """
 
 import os
@@ -71,6 +73,8 @@ def main():
     aug_scale = float(os.getenv("AUG_SCALE", "0.3"))
     aug_mosaic = float(os.getenv("AUG_MOSAIC", "0.8"))
     aug_mixup = float(os.getenv("AUG_MIXUP", "0.0"))
+    freeze_layers = int(os.getenv("FREEZE_LAYERS", "0"))
+    cls_loss_weight = float(os.getenv("CLS_LOSS_WEIGHT", "0.5"))
     
     print(f"✓ Using Python: {venv_python}")
     print(f"✓ Working directory: {project_root}")
@@ -92,6 +96,8 @@ def main():
     print(f"  Warmup: {warmup_epochs} epochs")
     print(f"  Augmentation: degrees={aug_degrees}, translate={aug_translate}, scale={aug_scale}")
     print(f"  Advanced Aug: mosaic={aug_mosaic}, mixup={aug_mixup}")
+    print(f"  Freeze Layers: {freeze_layers} ({'disabled' if freeze_layers == 0 else 'backbone locked'})")
+    print(f"  Cls Loss Weight: {cls_loss_weight}")
     print()
     
     # Verify dataset exists based on type
@@ -105,7 +111,19 @@ def main():
         train_imgs = list((project_root / "data" / dataset / "images" / "train").glob("*.jpg"))
         val_imgs   = list((project_root / "data" / dataset / "images" / "valid").glob("*.jpg"))
         print(f"✓ Combined YOLO data verified: {data_yaml}")
-        print(f"  ({len(train_imgs):,} train / {len(val_imgs):,} val images, 16 classes)")
+        print(f"  ({len(train_imgs):,} train / {len(val_imgs):,} val images, 26 classes)")
+        print()
+    elif dataset == "xray_baggage":
+        # X-Ray Baggage COCO dataset converted by download_xray_baggage job
+        data_yaml = project_root / "data/xray_baggage_yolo/data.yaml"
+        if not data_yaml.exists():
+            print(f"❌ Error: X-Ray Baggage data.yaml not found at {data_yaml}")
+            print("   Run the 'download_xray_baggage' job first")
+            sys.exit(1)
+        train_imgs = list((project_root / "data/xray_baggage_yolo/images/train").glob("*.jpg"))
+        val_imgs   = list((project_root / "data/xray_baggage_yolo/images/valid").glob("*.jpg"))
+        print(f"✓ X-Ray Baggage YOLO data verified: {data_yaml}")
+        print(f"  ({len(train_imgs):,} train / {len(val_imgs):,} val images, 5 classes)")
         print()
     elif dataset == "cargoxray":
         # CargoXray is already in YOLO format from Git LFS
@@ -164,10 +182,18 @@ def main():
     if dataset == "combined_xray_yolo" or dataset.startswith("combined_"):
         data_yaml_path = f"data/{dataset}/data.yaml"
         print("=" * 60)
-        print("Using Combined X-ray Dataset (luggage_xray + STCray)")
+        print("Using Combined X-ray Dataset (luggage + STCray + baggage)")
         print("=" * 60)
         print(f"✓ Data YAML: {data_yaml_path}")
-        print("  (~36K+ images, 16 classes — no conversion needed)")
+        print("  (~35K+ images, 26 classes — no conversion needed)")
+        print()
+    elif dataset == "xray_baggage":
+        data_yaml_path = "data/xray_baggage_yolo/data.yaml"
+        print("=" * 60)
+        print("Using X-Ray Baggage Dataset (COCO, single source)")
+        print("=" * 60)
+        print(f"✓ Data YAML: {data_yaml_path}")
+        print("  (1,415 train / 154 val, 5 classes: Gun Knife Pliers Scissors Wrench)")
         print()
     elif dataset == "cargoxray":
         data_yaml_path = "data/cargoxray_yolo/data.yaml"
@@ -257,8 +283,12 @@ def main():
         "--aug-scale", str(aug_scale),
         "--aug-mosaic", str(aug_mosaic),
         "--aug-mixup", str(aug_mixup),
+        "--cls-loss", str(cls_loss_weight),
     ]
-    
+
+    if freeze_layers > 0:
+        train_cmd += ["--freeze", str(freeze_layers)]
+
     if export_onnx:
         train_cmd.append("--export-onnx")
     

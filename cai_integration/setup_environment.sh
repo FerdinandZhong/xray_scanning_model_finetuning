@@ -206,3 +206,52 @@ else
     echo "Virtual environment location: $VENV_PATH"
     echo "=============================================================="
 fi
+
+# ── Pre-download YOLO pre-trained weights ─────────────────────────────────────
+# Downloads the model to /home/cdsw/<model>.pt so the training job finds it
+# immediately without a mid-run download.
+# Controlled by YOLO_MODEL_NAME env var (default: yolo26x.pt).
+# Set SKIP_MODEL_DOWNLOAD=true to skip (e.g. model already present or offline).
+# ─────────────────────────────────────────────────────────────────────────────
+if [ "${SKIP_MODEL_DOWNLOAD:-false}" != "true" ] && [ "${REQUIREMENTS_FILE:-}" = "setup/requirements_yolo.txt" ]; then
+    YOLO_MODEL="${YOLO_MODEL_NAME:-yolo26x.pt}"
+    MODEL_DEST="/home/cdsw/${YOLO_MODEL}"
+
+    if [ -f "$MODEL_DEST" ]; then
+        SIZE_MB=$(du -m "$MODEL_DEST" | cut -f1)
+        echo "✓ Pre-trained weights already present: ${MODEL_DEST} (${SIZE_MB} MB) — skipping download"
+    else
+        echo "=============================================================="
+        echo "Downloading pre-trained YOLO weights: ${YOLO_MODEL}"
+        echo "=============================================================="
+        cd /home/cdsw
+        "$VENV_PATH/bin/python" - <<PYEOF
+import sys
+from pathlib import Path
+
+try:
+    from ultralytics import YOLO
+    print(f"  Fetching {sys.argv[0] if False else '${YOLO_MODEL}'} from Ultralytics GitHub releases...")
+    # YOLO() auto-downloads to cwd (/home/cdsw) if the file is not found locally
+    model = YOLO("${YOLO_MODEL}")
+    dest = Path("/home/cdsw/${YOLO_MODEL}")
+    if dest.exists():
+        size_mb = dest.stat().st_size / (1024 * 1024)
+        print(f"  ✓ Saved to {dest}  ({size_mb:.0f} MB)")
+    else:
+        # Ultralytics may cache elsewhere; locate and copy
+        import ultralytics
+        cache_dir = Path(ultralytics.__file__).parent / "assets"
+        candidates = list(Path.home().rglob("${YOLO_MODEL}")) + list(cache_dir.glob("${YOLO_MODEL}"))
+        if candidates:
+            import shutil
+            shutil.copy2(candidates[0], dest)
+            print(f"  ✓ Copied from cache to {dest}")
+        else:
+            print("  ⚠ Model downloaded but location unclear — will re-download at training time")
+except Exception as e:
+    print(f"  ⚠ Pre-download failed: {e}")
+    print("  Model will be downloaded automatically when training starts.")
+PYEOF
+    fi
+fi
