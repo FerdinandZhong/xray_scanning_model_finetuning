@@ -52,6 +52,11 @@ jobs:
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       FORCE_REINSTALL: "false"
+      # Pre-trained YOLO weights to download during setup (saved to /home/cdsw/<model>.pt)
+      # Must match MODEL_NAME in the yolo_training job — change both together.
+      # Set SKIP_MODEL_DOWNLOAD=true if the weights are already present on the workspace.
+      YOLO_MODEL_NAME: "yolo26x.pt"   # yolov8x | yolo11x | yolo12x | yolo26x
+      SKIP_MODEL_DOWNLOAD: "false"
 
   # Job 2a: Download Luggage X-ray Dataset (Optional - for luggage_xray dataset)
   download_luggage_xray:
