@@ -28,8 +28,13 @@ import sys
 import io
 import requests
 import uvicorn
+import nest_asyncio
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
+
+# CAI/Jupyter sessions run IPython which already owns an asyncio event loop.
+# nest_asyncio allows uvicorn.run() to nest inside that loop safely.
+nest_asyncio.apply()
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
