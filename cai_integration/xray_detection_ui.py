@@ -622,4 +622,4 @@ if __name__ == "__main__":
     print(f"  YOLO API: {YOLO_API_URL}")
     print(f"  UI:       http://localhost:{APP_PORT}/")
     print()
-    uvicorn.run(app, host="0.0.0.0", port=APP_PORT)
+    uvicorn.run(app, host="127.0.0.1", port=APP_PORT)
