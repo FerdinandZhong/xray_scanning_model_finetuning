@@ -210,8 +210,30 @@ jobs:
       APP_SUBDOMAIN: "xray-yolo-api"  # Custom subdomain (optional)
       USE_GPU: "true"  # Set to "false" for CPU-only deployment (slower but no GPU needed)
 
-# Note: After deployment, the API will be available at:
+  # Job 5: X-Ray Detection UI — browser-based upload & visualisation app
+  # Serves a single-page UI that proxies uploads to the YOLO detection API
+  # and draws bounding boxes on the result canvas.
+  deploy_detection_ui:
+    name: "X-Ray Detection UI"
+    description: "Single-page web UI for uploading X-ray images and visualising YOLO detection results"
+    script: "cai_integration/xray_detection_ui.py"
+    kernel: "python3"
+    cpu: 1
+    memory: 4
+    timeout: 600  # 10 minutes to start
+    # No GPU needed — this is a pure UI/proxy, not a model server
+    parent_job_key: "deploy_yolo_application"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      # URL of the deployed YOLO detection API (no trailing slash)
+      YOLO_API_URL: "https://xray-yolo-api.ml-e54c7b5e-fcc.qzhong-1.a465-9q4k.cloudera.site"
+      # CDSW_APP_PORT is injected automatically by CAI at runtime
+
+# Note: After deployment, applications will be available at:
+# YOLO Detection API:
 # - Health Check:     https://xray-yolo-api.[cai-domain]/health
 # - API Docs:         https://xray-yolo-api.[cai-domain]/docs
 # - OpenAI API:       https://xray-yolo-api.[cai-domain]/v1/chat/completions
 # - Direct Detection: https://xray-yolo-api.[cai-domain]/v1/detect
+# Detection UI:
+# - Web UI:           https://xray-detection-ui.[cai-domain]/
