@@ -148,19 +148,22 @@ jobs:
     memory: 32
     gpu: 1
     timeout: 108000  # 30 hours — combined dataset at 200 epochs takes ~27 hrs
-    # Fixed parent — combine_datasets is a no-op when dataset already exists,
-    # so this dependency costs nothing on PATH A (luggage_xray) runs.
-    parent_job_key: "combine_datasets"
+    # parent_job_key controls which upstream job must complete first:
+    #   xray_baggage only  → "download_xray_baggage"
+    #   combined dataset   → "combine_datasets"
+    #   luggage_xray only  → "download_luggage_xray"
+    parent_job_key: "download_xray_baggage"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       # ── Switch training path via this single env var ─────────────────────
       # PATH A (YOLO-only):  luggage_xray
       # PATH B (Combined):   combined_xray_yolo
-      DATASET: "combined_xray_yolo"
+      # PATH C (Baggage):    xray_baggage
+      DATASET: "xray_baggage"
 
       MODEL_NAME: "yolo26x.pt"  # yolov8x | yolo11x | yolo12x | yolo26x (latest)
       EPOCHS: "200"             # Max epochs (early stop if no improvement)
-      BATCH_SIZE: "8"           # 8 for yolov8x (2x params vs yolov8m, halve batch)
+      BATCH_SIZE: "16"          # 16 for xray_baggage (small dataset, larger batch ok)
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"      # Set "true" to export ONNX for production
       VAL_SPLIT: "0.2"          # Only used for stcray dataset

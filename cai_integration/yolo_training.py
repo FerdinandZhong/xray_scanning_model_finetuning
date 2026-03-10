@@ -111,7 +111,19 @@ def main():
         train_imgs = list((project_root / "data" / dataset / "images" / "train").glob("*.jpg"))
         val_imgs   = list((project_root / "data" / dataset / "images" / "valid").glob("*.jpg"))
         print(f"✓ Combined YOLO data verified: {data_yaml}")
-        print(f"  ({len(train_imgs):,} train / {len(val_imgs):,} val images, 16 classes)")
+        print(f"  ({len(train_imgs):,} train / {len(val_imgs):,} val images, 26 classes)")
+        print()
+    elif dataset == "xray_baggage":
+        # X-Ray Baggage COCO dataset converted by download_xray_baggage job
+        data_yaml = project_root / "data/xray_baggage_yolo/data.yaml"
+        if not data_yaml.exists():
+            print(f"❌ Error: X-Ray Baggage data.yaml not found at {data_yaml}")
+            print("   Run the 'download_xray_baggage' job first")
+            sys.exit(1)
+        train_imgs = list((project_root / "data/xray_baggage_yolo/images/train").glob("*.jpg"))
+        val_imgs   = list((project_root / "data/xray_baggage_yolo/images/valid").glob("*.jpg"))
+        print(f"✓ X-Ray Baggage YOLO data verified: {data_yaml}")
+        print(f"  ({len(train_imgs):,} train / {len(val_imgs):,} val images, 5 classes)")
         print()
     elif dataset == "cargoxray":
         # CargoXray is already in YOLO format from Git LFS
@@ -170,10 +182,18 @@ def main():
     if dataset == "combined_xray_yolo" or dataset.startswith("combined_"):
         data_yaml_path = f"data/{dataset}/data.yaml"
         print("=" * 60)
-        print("Using Combined X-ray Dataset (luggage_xray + STCray)")
+        print("Using Combined X-ray Dataset (luggage + STCray + baggage)")
         print("=" * 60)
         print(f"✓ Data YAML: {data_yaml_path}")
-        print("  (~36K+ images, 16 classes — no conversion needed)")
+        print("  (~35K+ images, 26 classes — no conversion needed)")
+        print()
+    elif dataset == "xray_baggage":
+        data_yaml_path = "data/xray_baggage_yolo/data.yaml"
+        print("=" * 60)
+        print("Using X-Ray Baggage Dataset (COCO, single source)")
+        print("=" * 60)
+        print(f"✓ Data YAML: {data_yaml_path}")
+        print("  (1,415 train / 154 val, 5 classes: Gun Knife Pliers Scissors Wrench)")
         print()
     elif dataset == "cargoxray":
         data_yaml_path = "data/cargoxray_yolo/data.yaml"
