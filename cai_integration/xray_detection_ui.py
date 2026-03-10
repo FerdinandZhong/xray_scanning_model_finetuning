@@ -26,15 +26,11 @@ Usage (CAI Application):
 import os
 import sys
 import io
+import subprocess
 import requests
 import uvicorn
-import nest_asyncio
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse
-
-# CAI/Jupyter sessions run IPython which already owns an asyncio event loop.
-# nest_asyncio allows uvicorn.run() to nest inside that loop safely.
-nest_asyncio.apply()
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -625,6 +621,42 @@ if __name__ == "__main__":
     print("=" * 60)
     print(f"  Port:     {APP_PORT}")
     print(f"  YOLO API: {YOLO_API_URL}")
-    print(f"  UI:       http://localhost:{APP_PORT}/")
+    print(f"  UI:       http://127.0.0.1:{APP_PORT}/")
     print()
-    uvicorn.run(app, host="127.0.0.1", port=APP_PORT)
+
+    if os.getenv("_UI_SERVER_MODE"):
+        # Running inside the subprocess — clean event loop, safe to call uvicorn directly.
+        uvicorn.run(app, host="127.0.0.1", port=APP_PORT)
+    else:
+        # Running in the CAI/Jupyter parent process which already owns an event loop.
+        # Spawn a fresh subprocess (no inherited loop) to host the uvicorn server,
+        # then block here so the CAI application stays alive — same pattern as
+        # launch_yolo_application.py.
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cmd = [sys.executable, os.path.abspath(__file__)]
+        env  = {**os.environ, "_UI_SERVER_MODE": "1"}
+        print(f"Spawning UI server subprocess: {' '.join(cmd)}")
+        print()
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=sys.stdout,
+                stderr=sys.stderr,
+                cwd=project_root,
+                env=env,
+            )
+            exit_code = process.wait()
+            if exit_code != 0:
+                print(f"\nERROR: UI server exited with code {exit_code}")
+                sys.exit(exit_code)
+        except KeyboardInterrupt:
+            print("\n\nShutting down UI server...")
+            if "process" in locals():
+                process.terminate()
+                process.wait()
+            sys.exit(0)
+        except Exception as exc:
+            print(f"\nERROR: Failed to start UI server: {exc}")
+            import traceback
+            traceback.print_exc()
+            sys.exit(1)
