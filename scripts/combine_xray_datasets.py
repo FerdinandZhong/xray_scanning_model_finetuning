@@ -2,28 +2,27 @@
 """
 Combine X-ray datasets for object detection training.
 
-Merges luggage_xray_yolo (6,164 images, 12 classes) with STCray
-(30,044 images, 24 categories) into a unified 27-class dataset covering
-all detectable objects in X-ray baggage scans — not just threats.
+Merges three source datasets into a unified 26-class YOLO dataset:
 
-Source datasets:
-  - luggage_xray_yolo:   6,164 train + 956 val  (12 classes)
-  - stcray_processed:   30,044 train (22 mapped categories, 2 skipped)
-    ↳ STCray train split used for both train and val (stratified by class, 10% val)
-    ↳ STCray test set intentionally excluded — different scanner conditions cause
-      domain shift that makes validation cls_loss meaningless
+  1. luggage_xray_yolo  — 6,164 images, 12 classes (Roboflow)
+  2. stcray_processed   — 30,044 images, 22 mapped classes (STCray)
+       ↳ Train split only; stratified 10% val per class
+       ↳ STCray test set excluded (different scanner → domain shift)
+  3. xray_baggage_yolo  — ~1,569 images, 5 classes (X-Ray Baggage COCO)
+       ↳ Pre-split by process_xray_baggage.py (10% val)
 
 Skipped STCray categories:
-  - "Non Threat":        meta-label with no specific object identity
+  - "Non Threat":        meta-label, no specific object
   - "Multilabel Threat": ambiguous multi-object label
 
 Output:
-  - data/combined_xray_yolo/  ~32K train + ~5K val, 26 classes
+  - data/combined_xray_yolo/  ~35K+ train + ~5K val, 26 classes
 
 Usage:
-  python scripts/combine_xray_datasets.py              # default: luggage + stcray
+  python scripts/combine_xray_datasets.py              # all three sources
   python scripts/combine_xray_datasets.py --dry-run    # preview without writing
   python scripts/combine_xray_datasets.py --classes-only  # print class mapping
+  python scripts/combine_xray_datasets.py --no-baggage # skip xray_baggage source
 """
 
 import argparse
@@ -61,6 +60,23 @@ STCRAY_EXTRA_CLASSES = [
 
 # Full unified class list: 12 luggage + 14 STCray = 26 classes
 UNIFIED_CLASSES = LUGGAGE_CLASSES + STCRAY_EXTRA_CLASSES
+
+# ─────────────────────────────────────────────
+# X-Ray Baggage → unified class mapping
+# ─────────────────────────────────────────────
+# All 5 xray_baggage classes map directly to existing UNIFIED_CLASSES names.
+# The dataset is already in YOLO format; class IDs must be remapped to the
+# unified index (not the 0-4 index used in the source dataset).
+XRAY_BAGGAGE_CLASS_MAP: Dict[str, str] = {
+    "Gun":      "Gun",
+    "Knife":    "knife",      # matches luggage_xray spelling
+    "Pliers":   "Pliers",
+    "Scissors": "scissors",   # matches luggage_xray spelling
+    "Wrench":   "Wrench",
+}
+
+# Source class list (order must match process_xray_baggage.py CLASSES)
+XRAY_BAGGAGE_SRC_CLASSES = ["Gun", "Knife", "Pliers", "Scissors", "Wrench"]
 
 # ─────────────────────────────────────────────
 # STCray → unified class mapping
@@ -166,6 +182,72 @@ def copy_luggage_xray(
             copied += 1
 
         print(f"  {split:5s}: {copied:5d} images")
+
+
+def copy_xray_baggage(
+    src_root: Path,
+    out_root: Path,
+    stats: Counter,
+    dry_run: bool = False,
+):
+    """
+    Copy xray_baggage_yolo into the combined dataset, remapping class IDs
+    from the source 0-4 index to the unified UNIFIED_CLASSES index.
+    """
+    print("\n── xray_baggage_yolo ──────────────────────────────────")
+
+    class_to_id = {name: i for i, name in enumerate(UNIFIED_CLASSES)}
+
+    for split, out_split in [("train", "train"), ("valid", "valid")]:
+        img_dir = src_root / "images" / split
+        lbl_dir = src_root / "labels" / split
+        out_img_dir = out_root / "images" / out_split
+        out_lbl_dir = out_root / "labels" / out_split
+
+        if not img_dir.exists():
+            print(f"  ⚠ {img_dir} not found, skipping {split}")
+            continue
+
+        images  = sorted(img_dir.glob("*.jpg"))
+        copied  = 0
+        skipped = 0
+
+        for img_path in images:
+            lbl_path = lbl_dir / (img_path.stem + ".txt")
+            if not lbl_path.exists():
+                skipped += 1
+                continue
+
+            # Remap class IDs from source (0-4) to unified index
+            new_lines = []
+            for line in lbl_path.read_text().strip().splitlines():
+                if not line.strip():
+                    continue
+                parts = line.split()
+                src_cls_idx = int(parts[0])
+                if src_cls_idx >= len(XRAY_BAGGAGE_SRC_CLASSES):
+                    continue
+                src_cls_name = XRAY_BAGGAGE_SRC_CLASSES[src_cls_idx]
+                unified_name = XRAY_BAGGAGE_CLASS_MAP.get(src_cls_name)
+                if unified_name is None:
+                    continue
+                unified_idx = class_to_id[unified_name]
+                new_lines.append(f"{unified_idx} {' '.join(parts[1:])}")
+                stats[f"{out_split}/{unified_name}"] += 1
+
+            if not new_lines:
+                skipped += 1
+                continue
+
+            out_name = f"bag_{img_path.name}"
+            if not dry_run:
+                shutil.copy2(img_path, out_img_dir / out_name)
+                (out_lbl_dir / out_name.replace(".jpg", ".txt")).write_text(
+                    "\n".join(new_lines) + "\n"
+                )
+            copied += 1
+
+        print(f"  {split:5s}: {copied:5d} images  (skipped no-label: {skipped})")
 
 
 def select_stcray_entries(
@@ -281,6 +363,7 @@ def build_combined_dataset(
     out_name: str = "combined_xray_yolo",
     val_ratio: float = 0.1,
     max_stcray_per_class: Optional[int] = None,
+    include_baggage: bool = True,
     dry_run: bool = False,
     seed: int = 42,
 ):
@@ -297,10 +380,11 @@ def build_combined_dataset(
     """
     random.seed(seed)
 
-    out_root = project_root / "data" / out_name
-    lug_root = project_root / "data" / "luggage_xray_yolo"
+    out_root    = project_root / "data" / out_name
+    lug_root    = project_root / "data" / "luggage_xray_yolo"
     stcray_root = project_root / "data" / "stcray_processed"
-    stcray_raw = project_root / "data" / "stcray_raw"
+    stcray_raw  = project_root / "data" / "stcray_raw"
+    bag_root    = project_root / "data" / "xray_baggage_yolo"
 
     print("=" * 65)
     print("COMBINING X-RAY DATASETS")
@@ -309,6 +393,7 @@ def build_combined_dataset(
     print(f"Classes:  {len(UNIFIED_CLASSES)} (all objects, no threat filtering)")
     print(f"  Base (luggage_xray): {LUGGAGE_CLASSES}")
     print(f"  Extra (stcray):      {STCRAY_EXTRA_CLASSES}")
+    print(f"Sources:  luggage_xray ✓  stcray ✓  xray_baggage {'✓' if include_baggage else '✗ (--no-baggage)'}")
     print(f"Dry run:  {dry_run}")
 
     # ── Print class mapping ──────────────────────────────────────
@@ -370,14 +455,27 @@ def build_combined_dataset(
     print(f"\n── STCray → valid (same-distribution split) ────────────")
     write_stcray_split(stcray_val_entries, out_root, "valid", stats, dry_run)
 
+    # ── 3. Copy X-Ray Baggage (optional) ────────────────────────
+    if include_baggage:
+        if not (bag_root / "data.yaml").exists():
+            print(f"\n⚠  xray_baggage_yolo not found at {bag_root}")
+            print("   Run the 'download_xray_baggage' job first, or use --no-baggage")
+        else:
+            print("\n[3/3] Copying xray_baggage_yolo...")
+            copy_xray_baggage(bag_root, out_root, stats, dry_run)
+
     # ── Write data.yaml ──────────────────────────────────────────
+    sources = ["luggage_xray_yolo", "stcray_processed"]
+    if include_baggage and (bag_root / "data.yaml").exists():
+        sources.append("xray_baggage_yolo")
+
     data_yaml = {
         "path":    str(out_root.absolute()),
         "train":   "images/train",
         "val":     "images/valid",
         "nc":      len(UNIFIED_CLASSES),
         "names":   UNIFIED_CLASSES,
-        "sources": ["luggage_xray_yolo", "stcray_processed"],
+        "sources": sources,
     }
     if not dry_run:
         with open(out_root / "data.yaml", "w") as f:
@@ -452,6 +550,10 @@ Examples:
         "--seed", type=int, default=42,
         help="Random seed for reproducibility (default: 42)",
     )
+    parser.add_argument(
+        "--no-baggage", action="store_true",
+        help="Exclude xray_baggage_yolo (X-Ray Baggage COCO dataset)",
+    )
     args = parser.parse_args()
 
     if args.classes_only:
@@ -468,6 +570,7 @@ Examples:
         project_root=project_root,
         out_name=args.output,
         max_stcray_per_class=args.max_per_class,
+        include_baggage=not args.no_baggage,
         dry_run=args.dry_run,
         seed=args.seed,
     )

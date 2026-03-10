@@ -17,3 +17,4 @@ data/**/*.json filter=lfs diff=lfs merge=lfs -text
 # Note: Negative patterns (!) are not supported in .gitattributes
 # To exclude files from LFS, add them to .gitignore instead
 data/stcray_raw/*.rar filter=lfs diff=lfs merge=lfs -text
+data/X-Ray[[:space:]]Baggage.coco.zip filter=lfs diff=lfs merge=lfs -text

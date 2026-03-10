@@ -12,6 +12,7 @@ Environment Variables:
 - FORCE_REBUILD:      Delete and rebuild if dataset already exists (default: false)
 - INCLUDE_LUGGAGE:    Include luggage_xray_yolo dataset (default: true)
 - INCLUDE_STCRAY:     Include STCray dataset (default: true)
+- INCLUDE_BAGGAGE:    Include xray_baggage_yolo dataset (default: true)
 """
 
 import os
@@ -37,8 +38,9 @@ def main():
     output_name   = os.getenv("OUTPUT_NAME",   "combined_xray_yolo")
     max_per_class = int(os.getenv("MAX_PER_CLASS", "0"))
     force_rebuild = os.getenv("FORCE_REBUILD", "false").lower() == "true"
-    inc_luggage   = os.getenv("INCLUDE_LUGGAGE", "true").lower() == "true"
-    inc_stcray    = os.getenv("INCLUDE_STCRAY",  "true").lower() == "true"
+    inc_luggage   = os.getenv("INCLUDE_LUGGAGE",  "true").lower() == "true"
+    inc_stcray    = os.getenv("INCLUDE_STCRAY",   "true").lower() == "true"
+    inc_baggage   = os.getenv("INCLUDE_BAGGAGE",  "true").lower() == "true"
 
     output_dir = project_root / "data" / output_name
 
@@ -48,6 +50,7 @@ def main():
     print(f"  Force rebuild:     {force_rebuild}")
     print(f"  Include luggage:   {inc_luggage}")
     print(f"  Include STCray:    {inc_stcray}")
+    print(f"  Include baggage:   {inc_baggage}")
     print()
 
     # ── Check if output already exists ───────────────────────────
@@ -88,6 +91,12 @@ def main():
     print()
 
     # ── Build command ─────────────────────────────────────────────
+    if inc_baggage:
+        bag_dir = project_root / "data" / "xray_baggage_yolo"
+        if not (bag_dir / "data.yaml").exists():
+            print(f"⚠  xray_baggage_yolo not found at {bag_dir}")
+            print("   Run the 'download_xray_baggage' job first, or set INCLUDE_BAGGAGE=false")
+
     cmd = [
         str(venv_python),
         "scripts/combine_xray_datasets.py",
@@ -96,6 +105,8 @@ def main():
 
     if max_per_class > 0:
         cmd += ["--max-per-class", str(max_per_class)]
+    if not inc_baggage:
+        cmd.append("--no-baggage")
 
     print(f"Running: {' '.join(cmd)}")
     print()

@@ -83,6 +83,10 @@ data/yolo_dataset_test/
 data/luggage_xray/
 data/luggage_xray_yolo/
 
+# X-Ray Baggage dataset (zip tracked by Git LFS; extracted dirs ignored)
+data/xray_baggage_raw/
+data/xray_baggage_yolo/
+
 # Summary files (internal)
 *_SUMMARY.md
 VERIFICATION_*.md
