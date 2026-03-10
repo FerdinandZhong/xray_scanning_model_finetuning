@@ -632,8 +632,13 @@ if __name__ == "__main__":
         # Spawn a fresh subprocess (no inherited loop) to host the uvicorn server,
         # then block here so the CAI application stays alive — same pattern as
         # launch_yolo_application.py.
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        cmd = [sys.executable, os.path.abspath(__file__)]
+        try:
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        except NameError:
+            # __file__ is not defined in CAI/Jupyter — CWD is the project root
+            project_root = os.getcwd()
+        ui_script = os.path.join(project_root, "cai_integration", "xray_detection_ui.py")
+        cmd = [sys.executable, ui_script]
         env  = {**os.environ, "_UI_SERVER_MODE": "1"}
         print(f"Spawning UI server subprocess: {' '.join(cmd)}")
         print()
