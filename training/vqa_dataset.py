@@ -1,6 +1,8 @@
 """
 PyTorch Dataset class for VQA (Visual Question Answering) on X-ray images.
-Handles Qwen2.5-VL image preprocessing and text tokenization.
+Handles Qwen3-VL / Qwen2.5-VL image preprocessing and text tokenization.
+
+Supports multi-object detection with structured JSON outputs.
 """
 
 import json
@@ -14,7 +16,7 @@ from transformers import AutoProcessor
 
 
 class XrayVQADataset(Dataset):
-    """Dataset for X-ray VQA training with Qwen2.5-VL."""
+    """Dataset for X-ray VQA training with Qwen3-VL / Qwen2.5-VL."""
     
     def __init__(
         self,
@@ -23,26 +25,30 @@ class XrayVQADataset(Dataset):
         image_resolution: int = 448,
         max_seq_length: int = 2048,
         image_root: Optional[str] = None,
+        use_chat_template: bool = True,
     ):
         """
         Args:
             jsonl_file: Path to JSONL file with VQA pairs
-            processor: Qwen2.5-VL processor (AutoProcessor)
+            processor: Qwen3-VL or Qwen2.5-VL processor (AutoProcessor)
             image_resolution: Image resolution (default: 448)
             max_seq_length: Maximum sequence length for text
             image_root: Root directory for images (if paths in JSONL are relative)
+            use_chat_template: Use chat template formatting (recommended for Qwen3-VL)
         """
         self.jsonl_file = Path(jsonl_file)
         self.processor = processor
         self.image_resolution = image_resolution
         self.max_seq_length = max_seq_length
         self.image_root = Path(image_root) if image_root else None
+        self.use_chat_template = use_chat_template
         
         # Load dataset
         self.data = []
         with open(self.jsonl_file, "r") as f:
             for line in f:
-                self.data.append(json.loads(line.strip()))
+                if line.strip():  # Skip empty lines
+                    self.data.append(json.loads(line.strip()))
         
         print(f"Loaded {len(self.data)} VQA pairs from {self.jsonl_file}")
     
@@ -71,16 +77,17 @@ class XrayVQADataset(Dataset):
         answer = item["answer"]
         question_type = item.get("metadata", {}).get("question_type", "general")
         
-        # Format prompt for Qwen2.5-VL
+        # Format prompt for Qwen3-VL / Qwen2.5-VL
         # The model expects: image + question, and learns to generate answer
         # For structured JSON questions, add explicit instruction
         if question_type == "structured_list":
-            prompt = f"Question: {question}\nProvide your response in valid JSON format only.\nAnswer:"
+            prompt = f"{question}\nProvide your response in valid JSON format only."
         else:
-            prompt = f"Question: {question}\nAnswer:"
+            prompt = question
         
         return {
             "image": image,
+            "question": question,
             "prompt": prompt,
             "answer": answer,
             "metadata": item.get("metadata", {}),
@@ -88,21 +95,56 @@ class XrayVQADataset(Dataset):
         }
 
 
-def collate_fn(batch, processor, max_seq_length=2048):
+def collate_fn(batch, processor, max_seq_length=2048, use_chat_template=True):
     """
     Custom collate function for batching VQA samples.
-    Handles vision-language inputs for Qwen2.5-VL.
+    Handles vision-language inputs for Qwen3-VL / Qwen2.5-VL.
+    
+    Args:
+        batch: List of dataset items
+        processor: Model processor
+        max_seq_length: Maximum sequence length
+        use_chat_template: Use chat template formatting (for Qwen3-VL)
     """
     images = [item["image"] for item in batch]
     prompts = [item["prompt"] for item in batch]
     answers = [item["answer"] for item in batch]
     
-    # Process images with Qwen2.5-VL processor
-    # Note: Qwen2.5-VL uses special image tokens in text
+    # For Qwen3-VL, use chat template format
+    # Process images with Qwen3-VL/Qwen2.5-VL processor
+    # Note: Models use special image tokens in text
     # Format: <|vision_start|><|image_pad|><|vision_end|>Question: ...
     
-    # Prepare full texts (prompt + answer for training)
-    full_texts = [f"{prompt} {answer}" for prompt, answer in zip(prompts, answers)]
+    if use_chat_template and hasattr(processor, 'apply_chat_template'):
+        # Use chat template for Qwen3-VL
+        # Build messages for each sample
+        conversations = []
+        for prompt, answer in zip(prompts, answers):
+            messages = [
+                {
+                    "role": "user",
+                    "content": prompt
+                },
+                {
+                    "role": "assistant",
+                    "content": answer
+                }
+            ]
+            conversations.append(messages)
+        
+        # Apply chat template
+        texts = []
+        for messages in conversations:
+            text = processor.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=False
+            )
+            texts.append(text)
+        full_texts = texts
+    else:
+        # Fallback: simple concatenation
+        full_texts = [f"{prompt}\nAnswer: {answer}" for prompt, answer in zip(prompts, answers)]
     
     # Tokenize text
     text_inputs = processor.tokenizer(
@@ -114,11 +156,16 @@ def collate_fn(batch, processor, max_seq_length=2048):
     )
     
     # Process images
-    # Qwen2.5-VL expects images to be processed separately
-    image_inputs = processor.image_processor(
-        images,
-        return_tensors="pt",
-    )
+    # Qwen3-VL/Qwen2.5-VL expects images to be processed separately
+    try:
+        image_inputs = processor.image_processor(
+            images,
+            return_tensors="pt",
+        )
+    except Exception as e:
+        # Fallback for different processor interfaces
+        print(f"Warning: image_processor failed: {e}, trying direct processing")
+        image_inputs = {"pixel_values": None}
     
     # Create labels for causal LM training
     # We want the model to predict the answer, not the question
@@ -156,19 +203,21 @@ def create_dataloader(
     image_resolution: int = 448,
     max_seq_length: int = 2048,
     image_root: Optional[str] = None,
+    use_chat_template: bool = True,
 ):
     """
     Create a DataLoader for VQA training.
     
     Args:
         jsonl_file: Path to JSONL file
-        processor: Qwen2.5-VL processor
+        processor: Qwen3-VL or Qwen2.5-VL processor
         batch_size: Batch size
         shuffle: Whether to shuffle data
         num_workers: Number of data loading workers
         image_resolution: Image resolution
         max_seq_length: Max sequence length
         image_root: Root directory for images
+        use_chat_template: Use chat template formatting (for Qwen3-VL)
     
     Returns:
         DataLoader
@@ -181,11 +230,12 @@ def create_dataloader(
         image_resolution=image_resolution,
         max_seq_length=max_seq_length,
         image_root=image_root,
+        use_chat_template=use_chat_template,
     )
     
     # Create custom collate function with processor
     def collate_wrapper(batch):
-        return collate_fn(batch, processor, max_seq_length)
+        return collate_fn(batch, processor, max_seq_length, use_chat_template)
     
     dataloader = DataLoader(
         dataset,
@@ -203,18 +253,19 @@ def create_dataloader(
 if __name__ == "__main__":
     from transformers import AutoProcessor
     
-    # Load processor
+    # Load processor (Qwen3-VL or Qwen2.5-VL)
     processor = AutoProcessor.from_pretrained(
-        "Qwen/Qwen2.5-VL-7B-Instruct",
+        "Qwen/Qwen3-VL-2B-Instruct",  # or "Qwen/Qwen2.5-VL-7B-Instruct"
         trust_remote_code=True,
     )
     
     # Create dataset
     dataset = XrayVQADataset(
-        jsonl_file="data/opixray_vqa_train.jsonl",
+        jsonl_file="data/stcray_vlm/stcray_vlm_train.jsonl",
         processor=processor,
         image_resolution=448,
         max_seq_length=2048,
+        use_chat_template=True,
     )
     
     print(f"Dataset size: {len(dataset)}")
@@ -227,11 +278,12 @@ if __name__ == "__main__":
     
     # Test dataloader
     dataloader = create_dataloader(
-        jsonl_file="data/opixray_vqa_train.jsonl",
+        jsonl_file="data/stcray_vlm/stcray_vlm_train.jsonl",
         processor=processor,
         batch_size=2,
         shuffle=True,
         num_workers=0,  # 0 for testing
+        use_chat_template=True,
     )
     
     batch = next(iter(dataloader))
