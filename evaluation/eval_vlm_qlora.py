@@ -17,7 +17,7 @@ Metrics:
 import argparse
 import json
 from pathlib import Path
-from typing import Dict, List, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 import time
 
