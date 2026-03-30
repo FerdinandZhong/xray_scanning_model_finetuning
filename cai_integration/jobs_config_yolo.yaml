@@ -1,5 +1,9 @@
 # X-ray YOLO Detection Jobs Configuration
 #
+# This file MUST live at: cai_integration/jobs_config_yolo.yaml
+# Used by: .github/workflows/deploy-to-cai.yml (model_type=yolo),
+#          python cai_integration/create_jobs.py --config cai_integration/jobs_config_yolo.yaml
+#
 # Job sequence:
 #   setup_environment
 #     ├── download_luggage_xray
