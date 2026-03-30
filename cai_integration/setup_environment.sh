@@ -48,9 +48,9 @@ check_existing_setup() {
             echo "  (YOLO environment detected)"
             return 0  # Setup exists
         fi
-        # Check for VLM requirements (torch + transformers)
-        if "$VENV_PATH/bin/python" -c "import transformers; import torch" 2>/dev/null; then
-            echo "  (VLM environment detected)"
+        # Check for VLM requirements (torch + transformers + peft for QLoRA)
+        if "$VENV_PATH/bin/python" -c "import transformers; import torch; import peft" 2>/dev/null; then
+            echo "  (VLM environment with PEFT detected)"
             return 0  # Setup exists
         fi
     fi
@@ -142,7 +142,7 @@ else
         echo "Installing YOLO dependencies (lightweight, no DeepSpeed/vLLM)..."
     elif [ -f "setup/requirements.txt" ]; then
         REQUIREMENTS_FILE="setup/requirements.txt"
-        echo "Installing full VLM dependencies..."
+        echo "Installing full VLM dependencies (includes PEFT, bitsandbytes, TRL for QLoRA)..."
     else
         echo "❌ Error: No requirements file found"
         exit 1
@@ -194,8 +194,8 @@ else
         # YOLO-specific verification
         python -c "import torch; from ultralytics import YOLO; import fastapi; print(f'PyTorch: {torch.__version__}, Ultralytics: OK, FastAPI: OK')"
     else
-        # Full VLM verification
-        python -c "import torch; import transformers; import peft; print(f'PyTorch: {torch.__version__}, Transformers: {transformers.__version__}, PEFT: {peft.__version__}')"
+        # Full VLM verification (including PEFT for QLoRA)
+        python -c "import torch; import transformers; import peft; import bitsandbytes; import trl; print(f'PyTorch: {torch.__version__}, Transformers: {transformers.__version__}, PEFT: {peft.__version__}, bitsandbytes: OK, TRL: OK')"
     fi
 
     echo "=============================================================="
