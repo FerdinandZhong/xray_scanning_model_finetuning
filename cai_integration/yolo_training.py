@@ -6,13 +6,13 @@ This script trains a YOLO model for X-ray baggage threat detection.
 Supports xray_baggage_yolo, luggage_xray, combined_xray_yolo, cargoxray, and stcray datasets.
 
 Training paths:
-  Quick Test: DATASET=xray_baggage_yolo → data/xray_baggage_yolo/data.yaml (1.5K imgs, 5 classes)
-  YOLO-only:  DATASET=luggage_xray   → data/luggage_xray_yolo/data.yaml   (6K imgs, 12 classes)
+  Quick Test: DATASET=xray_baggage → data/xray_baggage_yolo/data.yaml (1.5K imgs, 5 classes, CPU-friendly)
+  YOLO-only:  DATASET=luggage_xray → data/luggage_xray_yolo/data.yaml   (6K imgs, 12 classes)
   Combined:   DATASET=combined_xray_yolo → data/combined_xray_yolo/data.yaml (55K imgs, 26 classes)
   Legacy:     DATASET=cargoxray / stcray (original single-source datasets)
 
 Environment Variables:
-- DATASET: Dataset to use (xray_baggage_yolo | luggage_xray | combined_xray_yolo | cargoxray | stcray, default: luggage_xray)
+- DATASET: Dataset to use (xray_baggage | luggage_xray | combined_xray_yolo | cargoxray | stcray, default: luggage_xray)
 - MODEL_NAME: YOLO model name (default: yolov8n.pt)
 - EPOCHS: Number of training epochs (default: 100)
 - BATCH_SIZE: Batch size (default: 16)

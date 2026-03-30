@@ -146,7 +146,7 @@ jobs:
     kernel: "python3"
     cpu: 8
     memory: 32
-    gpu: 1
+    gpu: 1  # Note: xray_baggage can run on CPU (gpu: 0), others need GPU
     timeout: 108000  # 30 hours — combined dataset at 200 epochs takes ~27 hrs
     # parent_job_key controls which upstream job must complete first:
     #   xray_baggage only  → "download_xray_baggage"
