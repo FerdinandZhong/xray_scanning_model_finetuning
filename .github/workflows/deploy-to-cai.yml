@@ -17,6 +17,7 @@ on:
         default: 'luggage_xray'
         type: choice
         options:
+          - xray_baggage_yolo
           - luggage_xray
           - combined_xray_yolo
           - cargoxray
@@ -93,10 +94,11 @@ jobs:
             echo "   Epochs: ${{ github.event.inputs.yolo_epochs }}"
             echo "   Export ONNX: ${{ github.event.inputs.export_onnx }}"
             case "${{ github.event.inputs.dataset }}" in
-              cargoxray)       echo "   🚀 CargoXray: Quick baseline (~1 h, Git LFS)" ;;
-              luggage_xray)    echo "   🚀 Luggage X-ray: Fast training (~2 h, 6K imgs)" ;;
-              combined_xray_yolo) echo "   🚀 Combined: luggage_xray + STCray (~4 h, 36K+ imgs, Git LFS)" ;;
-              stcray)          echo "   🚀 STCray only: Production model (~4 h, Git LFS)" ;;
+              xray_baggage_yolo)  echo "   🚀 X-Ray Baggage: Quick test (~30-45 min, 1.5K imgs, Git LFS)" ;;
+              cargoxray)          echo "   🚀 CargoXray: Quick baseline (~1 h, Git LFS)" ;;
+              luggage_xray)       echo "   🚀 Luggage X-ray: Fast training (~2 h, 6K imgs)" ;;
+              combined_xray_yolo) echo "   🚀 Combined: luggage_xray + STCray + baggage (~4 h, 55K imgs, Git LFS)" ;;
+              stcray)             echo "   🚀 STCray only: Production model (~4 h, Git LFS)" ;;
             esac
           elif [ "${{ github.event.inputs.model_type }}" = "vlm" ]; then
             echo "✅ Using VLM (Vision-Language Model) approach"
@@ -232,20 +234,33 @@ jobs:
               config['jobs']['yolo_training']['environment']['DATASET'] = dataset
 
               # Adjust timeout and dependencies based on dataset
-              if dataset == 'luggage_xray':
+              if dataset == 'xray_baggage_yolo':
+                  # X-Ray Baggage only — from Git LFS, quick test
+                  config['jobs']['yolo_training']['timeout'] = 2700  # 45 minutes
+                  config['jobs']['yolo_training']['parent_job_key'] = 'download_xray_baggage'
+                  if 'download_luggage_xray' in config['jobs']:
+                      del config['jobs']['download_luggage_xray']
+                  if 'download_dataset' in config['jobs']:
+                      del config['jobs']['download_dataset']
+                  if 'combine_datasets' in config['jobs']:
+                      del config['jobs']['combine_datasets']
+                  print(f"✓ X-Ray Baggage: Git LFS → extract COCO → convert to YOLO")
+              elif dataset == 'luggage_xray':
                   # Luggage X-ray only — no STCray, no combine step
                   config['jobs']['yolo_training']['timeout'] = 7200  # 2 hours
                   config['jobs']['yolo_training']['parent_job_key'] = 'download_luggage_xray'
                   if 'download_dataset' in config['jobs']:
                       del config['jobs']['download_dataset']
+                  if 'download_xray_baggage' in config['jobs']:
+                      del config['jobs']['download_xray_baggage']
                   if 'combine_datasets' in config['jobs']:
                       del config['jobs']['combine_datasets']
                   print(f"✓ Luggage X-ray: Will download from Roboflow")
               elif dataset == 'combined_xray_yolo':
-                  # Combined: needs luggage_xray + STCray (from Git LFS) + combine step
+                  # Combined: needs luggage_xray + STCray (from Git LFS) + baggage + combine step
                   config['jobs']['yolo_training']['timeout'] = 14400  # 4 hours
                   config['jobs']['yolo_training']['parent_job_key'] = 'combine_datasets'
-                  print(f"✓ Combined dataset: luggage_xray + STCray (Git LFS) → combine_datasets → yolo_training")
+                  print(f"✓ Combined dataset: luggage_xray + STCray + baggage (Git LFS) → combine_datasets → yolo_training")
               elif dataset == 'cargoxray':
                   # CargoXray is in Git LFS, no download needed
                   config['jobs']['yolo_training']['timeout'] = 3600  # 1 hour
@@ -254,6 +269,8 @@ jobs:
                       del config['jobs']['download_luggage_xray']
                   if 'download_dataset' in config['jobs']:
                       del config['jobs']['download_dataset']
+                  if 'download_xray_baggage' in config['jobs']:
+                      del config['jobs']['download_xray_baggage']
                   if 'combine_datasets' in config['jobs']:
                       del config['jobs']['combine_datasets']
                   print(f"✓ CargoXray: Using Git LFS (no download job needed)")
@@ -264,6 +281,8 @@ jobs:
                   config['jobs']['download_dataset']['timeout'] = 3600  # 1 hour
                   if 'download_luggage_xray' in config['jobs']:
                       del config['jobs']['download_luggage_xray']
+                  if 'download_xray_baggage' in config['jobs']:
+                      del config['jobs']['download_xray_baggage']
                   if 'combine_datasets' in config['jobs']:
                       del config['jobs']['combine_datasets']
                   print(f"✓ STCray: RAR files from Git LFS → extract → process annotations")
