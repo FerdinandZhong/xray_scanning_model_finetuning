@@ -4,6 +4,8 @@
 # Used by: .github/workflows/deploy-to-cai.yml (model_type=yolo),
 #          python cai_integration/create_jobs.py --config cai_integration/jobs_config_yolo.yaml
 #
+# CPU-only quick test (X-Ray Baggage): use jobs_config_yolo_cpu_baggage.yaml instead.
+#
 # Job sequence:
 #   setup_environment
 #     ├── download_luggage_xray

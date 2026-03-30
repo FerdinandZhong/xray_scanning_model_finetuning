@@ -6,76 +6,13 @@ Complete guide for running YOLO training on X-Ray Baggage dataset from CAI sessi
 
 ## Method 1: Use CAI Jobs API (Recommended)
 
-### Step 1: Prepare Jobs Config for CPU Training
+### Step 1: Use the committed CPU Baggage config
 
-Create a temporary config file for CPU-only xray_baggage training:
+The repo includes **`cai_integration/jobs_config_yolo_cpu_baggage.yaml`**: three jobs with **`gpu: 0`**, **`YOLO_DEVICE=cpu`**, and **distinct CAI job names** so they do not collide with the default GPU pipeline.
 
-```bash
-cd /home/cdsw
-
-# Create CPU-specific config
-cat > cai_integration/jobs_config_xray_baggage_cpu.yaml << 'EOF'
-jobs:
-  setup_environment:
-    name: "Setup Python Environment"
-    description: "Create Python venv and install dependencies"
-    script: "cai_integration/setup_environment.py"
-    kernel: "python3"
-    cpu: 4
-    memory: 16
-    timeout: 3600
-    parent_job_key: null
-    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
-    environment:
-      FORCE_REINSTALL: "false"
-      YOLO_MODEL_NAME: "yolov8n.pt"
-      SKIP_MODEL_DOWNLOAD: "false"
-
-  download_xray_baggage:
-    name: "Process X-Ray Baggage Dataset"
-    description: "Extract and convert X-Ray Baggage COCO to YOLO format"
-    script: "cai_integration/download_xray_baggage.py"
-    kernel: "python3"
-    cpu: 4
-    memory: 8
-    timeout: 1800
-    parent_job_key: "setup_environment"
-    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
-    environment:
-      VAL_RATIO: "0.1"
-      FORCE_REPROCESS: "false"
-
-  yolo_training:
-    name: "Train YOLO on CPU"
-    description: "Train YOLO on xray_baggage dataset (CPU-only)"
-    script: "cai_integration/yolo_training.py"
-    kernel: "python3"
-    cpu: 16
-    memory: 64
-    gpu: 0
-    timeout: 14400
-    parent_job_key: "download_xray_baggage"
-    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
-    environment:
-      DATASET: "xray_baggage"
-      MODEL_NAME: "yolov8n.pt"
-      EPOCHS: "100"
-      BATCH_SIZE: "16"
-      IMG_SIZE: "640"
-      EXPORT_ONNX: "false"
-      LEARNING_RATE: "0.01"
-      OPTIMIZER: "SGD"
-      PATIENCE: "10"
-      DEVICE: "cpu"
-EOF
-
-echo "✓ Created jobs_config_xray_baggage_cpu.yaml"
-```
-
-### Step 2: Set Environment Variables
+### Step 2: Set CAI credentials
 
 ```bash
-# Set your CAI credentials
 export CML_HOST="your-cai-workspace.cloudera.site"
 export CML_API_KEY="your-api-key"
 export PROJECT_ID="your-project-id"
@@ -86,25 +23,28 @@ export PROJECT_ID="your-project-id"
 - `CML_API_KEY`: Settings → API Keys → Create new key
 - `PROJECT_ID`: Check URL when in your project (e.g., `/projects/abc123`)
 
-### Step 3: Create Jobs
+### Step 3: Create jobs
 
 ```bash
 cd /home/cdsw
 
-# Create jobs using the API
 python cai_integration/create_jobs.py \
   --project-id "$PROJECT_ID" \
-  --config cai_integration/jobs_config_xray_baggage_cpu.yaml
+  --config cai_integration/jobs_config_yolo_cpu_baggage.yaml
 ```
 
-### Step 4: Trigger Jobs
+### Step 4: Trigger jobs
 
-The jobs will auto-trigger in sequence if parent jobs complete successfully.
+Child jobs run when parents succeed. Manually start the pipeline from the CAI **Jobs** UI:
 
-**Or manually trigger from CAI UI:**
-1. Go to Jobs section
-2. Find "Setup Python Environment"
-3. Click "Run"
+1. Open **Jobs**
+2. Run **“Setup Python Environment (YOLO CPU — Baggage)”** (root job)
+
+CAI job chain:
+
+1. **Setup Python Environment (YOLO CPU — Baggage)** →  
+2. **Process X-Ray Baggage (CPU pipeline)** →  
+3. **Train YOLO on CPU — X-Ray Baggage**
 
 ---
 
@@ -155,7 +95,7 @@ export MODEL_NAME="yolov8n.pt"
 export EPOCHS="100"
 export BATCH_SIZE="16"
 export IMG_SIZE="640"
-export DEVICE="cpu"
+export YOLO_DEVICE="cpu"
 export LEARNING_RATE="0.01"
 export OPTIMIZER="SGD"
 export PATIENCE="10"

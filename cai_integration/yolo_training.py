@@ -13,6 +13,7 @@ Training paths:
 
 Environment Variables:
 - DATASET: Dataset to use (xray_baggage | luggage_xray | combined_xray_yolo | cargoxray | stcray, default: luggage_xray)
+- YOLO_DEVICE: Ultralytics device (default: "0" = first GPU; use "cpu" for CPU-only jobs)
 - MODEL_NAME: YOLO model name (default: yolov8n.pt)
 - EPOCHS: Number of training epochs (default: 100)
 - BATCH_SIZE: Batch size (default: 16)
@@ -76,12 +77,15 @@ def main():
     aug_mixup = float(os.getenv("AUG_MIXUP", "0.0"))
     freeze_layers = int(os.getenv("FREEZE_LAYERS", "0"))
     cls_loss_weight = float(os.getenv("CLS_LOSS_WEIGHT", "0.5"))
+    # Ultralytics device: "0","1",... (CUDA) or "cpu" / "mps". Prefer YOLO_DEVICE for training jobs.
+    train_device = os.getenv("YOLO_DEVICE", "0").strip()
     
     print(f"✓ Using Python: {venv_python}")
     print(f"✓ Working directory: {project_root}")
     print()
     print(f"YOLO Training Configuration:")
     print(f"  Dataset: {dataset}")
+    print(f"  Device: {train_device}")
     print(f"  Model: {model_name}")
     print(f"  Epochs: {epochs} (max, early stop if no improvement)")
     print(f"  Batch Size: {batch_size}")
@@ -271,7 +275,7 @@ def main():
         "--epochs", str(epochs),
         "--batch", str(batch_size),
         "--imgsz", str(img_size),
-        "--device", "0",  # Use first GPU
+        "--device", train_device,
         "--project", "runs/detect",
         "--name", f"xray_detection_{dataset}",
         # Configurable hyperparameters
