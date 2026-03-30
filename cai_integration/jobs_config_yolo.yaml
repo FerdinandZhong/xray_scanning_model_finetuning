@@ -163,7 +163,7 @@ jobs:
 
       MODEL_NAME: "yolo26x.pt"  # yolov8x | yolo11x | yolo12x | yolo26x (latest)
       EPOCHS: "200"             # Max epochs (early stop if no improvement)
-      BATCH_SIZE: "16"          # 16 for xray_baggage (small dataset, larger batch ok)
+      BATCH_SIZE: "-1"          # -1 = Ultralytics auto-batch (maximises GPU VRAM safely)
       IMG_SIZE: "640"
       EXPORT_ONNX: "false"      # Set "true" to export ONNX for production
       VAL_SPLIT: "0.2"          # Only used for stcray dataset
@@ -188,30 +188,38 @@ jobs:
       AUG_MOSAIC: "0.8"         # Mosaic probability (0–1.0)
       AUG_MIXUP: "0.0"          # Mixup probability (0–1.0)
 
-  # Job 4: Deploy YOLO API as CAI Application
-  # Creates a persistent API endpoint accessible at https://[subdomain].[cai-domain]
-  deploy_yolo_application:
-    name: "Deploy YOLO API Application"
-    description: "Deploy trained YOLO model as persistent CAI Application with exposed endpoints"
-    script: "cai_integration/deploy_yolo_application.py"
+  # Job 4: Launch full X-Ray Detection stack as a single CAI Application
+  # ── What it runs ────────────────────────────────────────────────────────────
+  #   [1] YOLO detection backend  (inference/yolo_api_server.py)
+  #       Binds to 127.0.0.1:BACKEND_PORT — internal only, never exposed
+  #   [2] Detection UI            (cai_integration/xray_detection_ui.py)
+  #       Binds to 127.0.0.1:CDSW_APP_PORT — CAI reverse-proxies this to the web
+  #   The UI proxies POST /api/detect → http://127.0.0.1:BACKEND_PORT/v1/detect
+  # ── Trigger ─────────────────────────────────────────────────────────────────
+  #   Automatically after yolo_training, or via GitHub Actions workflow_dispatch
+  # ────────────────────────────────────────────────────────────────────────────
+  deploy_xray_app:
+    name: "X-Ray Detection App (API + UI)"
+    description: "Launches YOLO backend and Detection UI together in one CAI Application"
+    script: "cai_integration/launch_xray_app.py"
     kernel: "python3"
-    cpu: 2
-    memory: 8
-    timeout: 1800  # 30 minutes
+    cpu: 4
+    memory: 16
+    gpu: 1
+    timeout: 1800  # 30 minutes; long enough for model load + health check
     parent_job_key: "yolo_training"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
-      # CAI credentials (set in GitHub Secrets or CAI Environment Variables)
-      CAI_API_KEY: "${CAI_API_KEY}"
-      CAI_DOMAIN: "${CAI_DOMAIN}"
-      CAI_PROJECT_NAME: "xray-scanning-model"  # Deploy to this project (matches setup_project.py)
-      # Application configuration
-      MODEL_PATH: ""  # Auto-detect latest trained model, or use pre-trained (e.g., "yolov8n.pt")
-      APP_SUBDOMAIN: "xray-yolo-api"  # Custom subdomain (optional)
-      USE_GPU: "true"  # Set to "false" for CPU-only deployment (slower but no GPU needed)
+      MODEL_PATH: ""          # Auto-detect latest run; or set explicit path
+      BACKEND: "ultralytics"
+      CONF_THRESHOLD: "0.25"
+      IOU_THRESHOLD: "0.45"
+      DEVICE: "0"             # Set "cpu" for CPU-only
+      BACKEND_PORT: "8100"    # Internal YOLO API port (not exposed by CAI)
+      # CDSW_APP_PORT injected automatically by CAI — UI listens on this port
 
-# Note: After deployment, the API will be available at:
-# - Health Check:     https://xray-yolo-api.[cai-domain]/health
-# - API Docs:         https://xray-yolo-api.[cai-domain]/docs
-# - OpenAI API:       https://xray-yolo-api.[cai-domain]/v1/chat/completions
-# - Direct Detection: https://xray-yolo-api.[cai-domain]/v1/detect
+# Note: After deployment the Detection UI is available at the CAI Application URL.
+# Internal YOLO API endpoints (reachable from within the session only):
+# - Health:     http://127.0.0.1:8100/health
+# - API Docs:   http://127.0.0.1:8100/docs
+# - Detection:  http://127.0.0.1:8100/v1/detect
