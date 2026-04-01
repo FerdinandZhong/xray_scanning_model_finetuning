@@ -26,10 +26,10 @@ from transformers import (
     Qwen3VLForConditionalGeneration,
     BitsAndBytesConfig,
     TrainingArguments,
-    Trainer,
+    EarlyStoppingCallback,
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
+from trl import SFTTrainer
 
 # Import custom dataset
 import sys
@@ -343,18 +343,19 @@ def main():
         eval_steps=args.eval_steps if eval_dataset else None,
         save_total_limit=3,  # Keep only last 3 checkpoints
         evaluation_strategy="steps" if eval_dataset else "no",
+        load_best_model_at_end=True if eval_dataset else False,
+        metric_for_best_model="eval_loss",
+        greater_is_better=False,
         logging_dir=str(output_dir / "logs"),
         fp16=False,
         bf16=True,  # Use BF16 for better stability with quantized models
         optim="paged_adamw_8bit",  # 8-bit Adam optimizer
         max_grad_norm=1.0,
         dataloader_num_workers=4,
-        remove_unused_columns=False,  # Important for vision-language models
+        remove_unused_columns=False,  # Critical: keeps pixel_values & image_grid_thw
         report_to="tensorboard",
         seed=args.seed,
         gradient_checkpointing=True,
-        # Push to hub (optional)
-        # push_to_hub=False,
     )
     
     print("=" * 60)
@@ -369,18 +370,26 @@ def main():
     print()
     
     # Custom data collator for VQA
+    # Uses unified processor() for proper multimodal tokenization + image_grid_thw.
+    # Label masking uses response template detection (same algorithm as
+    # DataCollatorForCompletionOnlyLM) integrated into the collate function.
     from training.vqa_dataset import collate_fn
-    
+
     def data_collator(batch):
-        return collate_fn(batch, processor, args.max_seq_length, use_chat_template=True)
-    
-    # Setup trainer
-    trainer = Trainer(
+        return collate_fn(batch, processor, args.max_seq_length)
+
+    # Setup trainer with early stopping
+    callbacks = []
+    if eval_dataset:
+        callbacks.append(EarlyStoppingCallback(early_stopping_patience=3))
+
+    trainer = SFTTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         data_collator=data_collator,
+        callbacks=callbacks,
     )
     
     # Resume from checkpoint if specified

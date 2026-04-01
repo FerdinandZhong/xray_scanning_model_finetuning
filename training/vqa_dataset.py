@@ -97,101 +97,104 @@ class XrayVQADataset(Dataset):
 
 def collate_fn(batch, processor, max_seq_length=2048, use_chat_template=True):
     """
-    Custom collate function for batching VQA samples.
-    Handles vision-language inputs for Qwen3-VL / Qwen2.5-VL.
-    
+    Custom collate function for batching VQA samples with Qwen3-VL / Qwen2.5-VL.
+
+    Uses the unified processor() call to correctly handle:
+    - Image token insertion (<|vision_start|><|image_pad|>...<|vision_end|>)
+    - image_grid_thw computation for spatial position encoding
+    - Proper pixel_values formatting
+
+    Label masking uses the response template approach: all tokens before
+    "<|im_start|>assistant\\n" are masked (-100) so the model only learns
+    to predict the assistant's response.
+
     Args:
-        batch: List of dataset items
-        processor: Model processor
+        batch: List of dataset items (each with "image", "prompt", "answer")
+        processor: Qwen3-VL / Qwen2.5-VL processor (AutoProcessor)
         max_seq_length: Maximum sequence length
-        use_chat_template: Use chat template formatting (for Qwen3-VL)
+        use_chat_template: Kept for API compatibility (always True)
     """
     images = [item["image"] for item in batch]
     prompts = [item["prompt"] for item in batch]
     answers = [item["answer"] for item in batch]
-    
-    # For Qwen3-VL, use chat template format
-    # Process images with Qwen3-VL/Qwen2.5-VL processor
-    # Note: Models use special image tokens in text
-    # Format: <|vision_start|><|image_pad|><|vision_end|>Question: ...
-    
-    if use_chat_template and hasattr(processor, 'apply_chat_template'):
-        # Use chat template for Qwen3-VL
-        # Build messages for each sample
-        conversations = []
-        for prompt, answer in zip(prompts, answers):
-            messages = [
-                {
-                    "role": "user",
-                    "content": prompt
-                },
-                {
-                    "role": "assistant",
-                    "content": answer
-                }
-            ]
-            conversations.append(messages)
-        
-        # Apply chat template
-        texts = []
-        for messages in conversations:
-            text = processor.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=False
-            )
-            texts.append(text)
-        full_texts = texts
-    else:
-        # Fallback: simple concatenation
-        full_texts = [f"{prompt}\nAnswer: {answer}" for prompt, answer in zip(prompts, answers)]
-    
-    # Tokenize text
-    text_inputs = processor.tokenizer(
-        full_texts,
+
+    # Build multimodal messages with image content blocks.
+    # The {"type": "image"} block tells apply_chat_template to insert
+    # <|vision_start|><|image_pad|>...<|vision_end|> placeholder tokens.
+    all_texts = []
+    for prompt, answer in zip(prompts, answers):
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image"},
+                    {"type": "text", "text": prompt},
+                ],
+            },
+            {
+                "role": "assistant",
+                "content": answer,
+            },
+        ]
+        text = processor.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=False,
+        )
+        all_texts.append(text)
+
+    # Unified processor call: tokenizes text AND processes images together.
+    # This produces input_ids with vision tokens, pixel_values, and
+    # image_grid_thw (required by Qwen3-VL for rotary position embedding
+    # over image patches).
+    inputs = processor(
+        text=all_texts,
+        images=images,
         padding="longest",
         truncation=True,
         max_length=max_seq_length,
         return_tensors="pt",
     )
-    
-    # Process images
-    # Qwen3-VL/Qwen2.5-VL expects images to be processed separately
-    try:
-        image_inputs = processor.image_processor(
-            images,
-            return_tensors="pt",
-        )
-    except Exception as e:
-        # Fallback for different processor interfaces
-        print(f"Warning: image_processor failed: {e}, trying direct processing")
-        image_inputs = {"pixel_values": None}
-    
-    # Create labels for causal LM training
-    # We want the model to predict the answer, not the question
-    # So we mask out the prompt part in labels
-    labels = text_inputs["input_ids"].clone()
-    
-    # Find where the answer starts (after "Answer:")
-    for i, (prompt, full_text) in enumerate(zip(prompts, full_texts)):
-        # Tokenize just the prompt to find its length
-        prompt_tokens = processor.tokenizer(
-            prompt,
-            add_special_tokens=False,
-        )["input_ids"]
-        
-        # Mask prompt tokens with -100 (ignored in loss)
-        labels[i, :len(prompt_tokens)] = -100
-    
+
+    # --- Label masking via response template detection ---
+    # Find "<|im_start|>assistant\n" in each sequence and mask everything
+    # before it (inclusive).  Same algorithm as DataCollatorForCompletionOnlyLM.
+    response_template = "<|im_start|>assistant\n"
+    response_template_ids = processor.tokenizer.encode(
+        response_template, add_special_tokens=False
+    )
+    template_len = len(response_template_ids)
+
+    labels = inputs["input_ids"].clone()
+
+    for i in range(labels.shape[0]):
+        seq = inputs["input_ids"][i].tolist()
+        found = False
+        for j in range(len(seq) - template_len + 1):
+            if seq[j : j + template_len] == response_template_ids:
+                labels[i, : j + template_len] = -100
+                found = True
+                break
+        if not found:
+            # Safety: mask the whole sequence so it doesn't corrupt the loss
+            labels[i, :] = -100
+
     # Mask padding tokens
-    labels[text_inputs["attention_mask"] == 0] = -100
-    
-    return {
-        "input_ids": text_inputs["input_ids"],
-        "attention_mask": text_inputs["attention_mask"],
-        "pixel_values": image_inputs.get("pixel_values"),  # May be None for some processors
+    labels[inputs["attention_mask"] == 0] = -100
+
+    result = {
+        "input_ids": inputs["input_ids"],
+        "attention_mask": inputs["attention_mask"],
         "labels": labels,
     }
+
+    # Include vision inputs (critical for multimodal training)
+    if "pixel_values" in inputs:
+        result["pixel_values"] = inputs["pixel_values"]
+    if "image_grid_thw" in inputs:
+        result["image_grid_thw"] = inputs["image_grid_thw"]
+
+    return result
 
 
 def create_dataloader(
@@ -235,7 +238,7 @@ def create_dataloader(
     
     # Create custom collate function with processor
     def collate_wrapper(batch):
-        return collate_fn(batch, processor, max_seq_length, use_chat_template)
+        return collate_fn(batch, processor, max_seq_length)
     
     dataloader = DataLoader(
         dataset,
@@ -292,3 +295,13 @@ if __name__ == "__main__":
     print(f"Labels shape: {batch['labels'].shape}")
     if batch.get("pixel_values") is not None:
         print(f"Pixel values shape: {batch['pixel_values'].shape}")
+    if batch.get("image_grid_thw") is not None:
+        print(f"Image grid THW shape: {batch['image_grid_thw'].shape}")
+
+    # Verify vision tokens are present in input_ids
+    image_pad_token = "<|image_pad|>"
+    image_pad_id = processor.tokenizer.convert_tokens_to_ids(image_pad_token)
+    has_vision = (batch["input_ids"] == image_pad_id).any().item()
+    print(f"\nVision tokens present: {has_vision}")
+    assert has_vision, "FAIL: no vision tokens found in input_ids"
+    print("Verification PASSED: images are integrated into the token stream")

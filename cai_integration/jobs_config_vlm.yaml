@@ -50,7 +50,11 @@ jobs:
       - "data/stcray_processed"
       - "--output-dir"
       - "data/stcray_vlm"
-    success_message: "Dataset converted to VLM format successfully"
+      - "--val-ratio"
+      - "0.1"
+      - "--seed"
+      - "42"
+    success_message: "Dataset converted to VLM format with train/val/test splits"
     failure_message: "Failed to convert dataset to VLM format"
 
   # Job 3: Train VLM with QLoRA
@@ -69,7 +73,7 @@ jobs:
       # Model and data
       MODEL_NAME: "${MODEL_NAME}"
       TRAIN_DATA: "data/stcray_vlm/stcray_vlm_train.jsonl"
-      EVAL_DATA: "data/stcray_vlm/stcray_vlm_test.jsonl"
+      EVAL_DATA: "data/stcray_vlm/stcray_vlm_val.jsonl"
       OUTPUT_DIR: "/home/cdsw/checkpoints/qwen3vl-2b-xray-qlora"
       # Training hyperparameters
       NUM_TRAIN_EPOCHS: "${EPOCHS}"
