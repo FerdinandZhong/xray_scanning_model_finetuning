@@ -17,9 +17,10 @@ with structured JSON outputs containing all detected objects and their bounding 
 
 import argparse
 import json
+import random
 from pathlib import Path
 from typing import Dict, List, Any
-from collections import Counter
+from collections import Counter, defaultdict
 from PIL import Image
 
 
@@ -307,6 +308,18 @@ def main():
         default=None,
         help="Project root directory (default: cwd)"
     )
+    parser.add_argument(
+        "--val-ratio",
+        type=float,
+        default=0.0,
+        help="Fraction of training data to use as validation (0 = no val split, 0.1 = 10%%)"
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for validation split"
+    )
     args = parser.parse_args()
     
     input_dir = Path(args.input_dir)
@@ -328,33 +341,33 @@ def main():
     
     # Process splits
     all_stats = {}
-    
+
     splits = [
         ("train", "stcray_vlm_train.jsonl"),
         ("test", "stcray_vlm_test.jsonl")
     ]
-    
+
     for split_name, output_filename in splits:
         annotations_file = input_dir / split_name / "annotations.json"
-        
+
         if not annotations_file.exists():
-            print(f"\n⚠️  {split_name} annotations not found: {annotations_file}")
+            print(f"\n  {split_name} annotations not found: {annotations_file}")
             print("     Skipping...")
             continue
-        
+
         output_file = output_dir / output_filename
-        
+
         vqa_entries = convert_split(
             annotations_file,
             output_file,
             split_name,
             project_root
         )
-        
+
         # Compute statistics
         stats = compute_statistics(vqa_entries)
         all_stats[split_name] = stats
-        
+
         # Print statistics
         print(f"\n  {split_name.upper()} Statistics:")
         print(f"    Total images:             {stats['total_images']:,}")
@@ -368,18 +381,69 @@ def main():
         print(f"    Top 5 categories:")
         for cat, count in list(stats['category_distribution'].items())[:5]:
             print(f"      - {cat}: {count:,}")
-    
+
+        # --- Stratified train/val split ---
+        if split_name == "train" and args.val_ratio > 0:
+            val_ratio = args.val_ratio
+            print(f"\n  Splitting train into train/val ({1-val_ratio:.0%}/{val_ratio:.0%})...")
+
+            # Group entries by their primary threat category for stratification
+            category_buckets = defaultdict(list)
+            for entry in vqa_entries:
+                cats = entry["metadata"].get("threat_categories", [])
+                primary = cats[0] if cats else "Non Threat"
+                category_buckets[primary].append(entry)
+
+            random.seed(args.seed)
+            train_entries = []
+            val_entries = []
+
+            for cat, entries in category_buckets.items():
+                random.shuffle(entries)
+                n_val = max(1, int(len(entries) * val_ratio))
+                val_entries.extend(entries[:n_val])
+                train_entries.extend(entries[n_val:])
+
+            # Shuffle final splits
+            random.shuffle(train_entries)
+            random.shuffle(val_entries)
+
+            # Overwrite train file with the reduced train set
+            train_file = output_dir / "stcray_vlm_train.jsonl"
+            with open(train_file, "w") as f:
+                for entry in train_entries:
+                    f.write(json.dumps(entry) + "\n")
+
+            # Write val file
+            val_file = output_dir / "stcray_vlm_val.jsonl"
+            with open(val_file, "w") as f:
+                for entry in val_entries:
+                    f.write(json.dumps(entry) + "\n")
+
+            print(f"    Train: {len(train_entries):,} samples -> {train_file}")
+            print(f"    Val:   {len(val_entries):,} samples -> {val_file}")
+
+            # Compute and store val stats
+            val_stats = compute_statistics(val_entries)
+            all_stats["val"] = val_stats
+            # Update train stats to reflect the reduced set
+            all_stats["train"] = compute_statistics(train_entries)
+
     # Save statistics
     stats_file = output_dir / "statistics.json"
     with open(stats_file, "w") as f:
         json.dump(all_stats, f, indent=2)
-    
+
     print()
     print("=" * 60)
-    print(f"✅ Conversion complete!")
-    print(f"   Train: {output_dir / 'stcray_vlm_train.jsonl'}")
-    print(f"   Test:  {output_dir / 'stcray_vlm_test.jsonl'}")
-    print(f"   Stats: {stats_file}")
+    print("Conversion complete!")
+    output_files = [f"   Train: {output_dir / 'stcray_vlm_train.jsonl'}"]
+    if args.val_ratio > 0:
+        output_files.append(f"   Val:   {output_dir / 'stcray_vlm_val.jsonl'}")
+    output_files.append(f"   Test:  {output_dir / 'stcray_vlm_test.jsonl'}")
+    output_files.append(f"   Stats: {stats_file}")
+    for line in output_files:
+        print(line)
     print("=" * 60)
 
 

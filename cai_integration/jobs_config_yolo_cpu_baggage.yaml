@@ -1,0 +1,81 @@
+# YOLO training on CPU — X-Ray Baggage only (quick test)
+#
+# Pipeline:
+#   setup_cpu_baggage → download_baggage_cpu → train_yolo_cpu_baggage
+#
+# Dataset: data/xray_baggage_yolo/ (Git LFS: data/X-Ray Baggage.coco.zip)
+# Classes: 5 (Gun, Knife, Pliers, Scissors, Wrench)
+#
+# Job names differ from jobs_config_yolo.yaml so CAI creates separate jobs
+# (avoids reusing a GPU-backed "Train YOLO Detection Model" job).
+#
+# Create jobs:
+#   export CML_HOST=... CML_API_KEY=...
+#   python cai_integration/create_jobs.py \
+#     --project-id YOUR_PROJECT_ID \
+#     --config cai_integration/jobs_config_yolo_cpu_baggage.yaml
+#
+# Then trigger the root job from CAI UI or:
+#   python cai_integration/trigger_jobs.py --project-id YOUR_PROJECT_ID
+#   (trigger_jobs may list by jobs_config.yaml — confirm root job name in CAI)
+
+jobs:
+  setup_cpu_baggage:
+    name: "Setup Python Environment (YOLO CPU — Baggage)"
+    description: "Venv + deps; downloads yolov8n.pt for CPU-friendly training"
+    script: "cai_integration/setup_environment.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 16
+    timeout: 3600
+    parent_job_key: null
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      FORCE_REINSTALL: "false"
+      YOLO_MODEL_NAME: "yolov8n.pt"
+      SKIP_MODEL_DOWNLOAD: "false"
+
+  download_baggage_cpu:
+    name: "Process X-Ray Baggage (CPU pipeline)"
+    description: "COCO zip → YOLO format under data/xray_baggage_yolo/"
+    script: "cai_integration/download_xray_baggage.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 8
+    timeout: 1800
+    parent_job_key: "setup_cpu_baggage"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      VAL_RATIO: "0.1"
+      FORCE_REPROCESS: "false"
+
+  train_yolo_cpu_baggage:
+    name: "Train YOLO on CPU — X-Ray Baggage"
+    description: "YOLOv8n, no GPU (gpu: 0), DATASET=xray_baggage"
+    script: "cai_integration/yolo_training.py"
+    kernel: "python3"
+    cpu: 16
+    memory: 64
+    gpu: 0
+    timeout: 14400
+    parent_job_key: "download_baggage_cpu"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      DATASET: "xray_baggage"
+      YOLO_DEVICE: "cpu"
+      MODEL_NAME: "yolov8n.pt"
+      EPOCHS: "100"
+      BATCH_SIZE: "16"
+      IMG_SIZE: "640"
+      EXPORT_ONNX: "false"
+      LEARNING_RATE: "0.01"
+      OPTIMIZER: "SGD"
+      PATIENCE: "15"
+      WARMUP_EPOCHS: "3.0"
+      FREEZE_LAYERS: "0"
+      CLS_LOSS_WEIGHT: "1.0"
+      AUG_DEGREES: "10.0"
+      AUG_TRANSLATE: "0.05"
+      AUG_SCALE: "0.3"
+      AUG_MOSAIC: "0.8"
+      AUG_MIXUP: "0.0"

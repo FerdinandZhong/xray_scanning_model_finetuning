@@ -1,80 +1,92 @@
-# CAI Job Pipeline for VLM (Qwen3-VL-2B) QLoRA Training
-# X-ray Multi-Object Threat Detection with STCray Dataset
+# CAI Job Pipeline for VLM (Qwen3-VL-2B) QLoRA Fine-Tuning
 #
-# Pipeline: Download STCray → Convert to VLM format → Train with QLoRA → Evaluate
+# Phase A of the PG-RAV curriculum: X-ray domain adaptation on STCray dataset.
+# Fine-tunes Qwen3-VL-2B-Instruct with QLoRA for multi-object X-ray threat detection.
 #
-# Environment Variables:
-#   MODEL_NAME: Model to fine-tune (default: Qwen/Qwen3-VL-2B-Instruct)
-#   BATCH_SIZE: Training batch size (default: 2 for T4 GPU)
-#   EPOCHS: Number of training epochs (default: 3)
-#   LORA_R: LoRA rank (default: 16)
-#   LORA_ALPHA: LoRA alpha (default: 32)
-
-# Global environment variables (applied to all jobs)
-environment_variables:
-  PYTHONUNBUFFERED: "1"
-  CUDA_VISIBLE_DEVICES: "0"
-  MODEL_NAME: "Qwen/Qwen3-VL-2B-Instruct"
-  BATCH_SIZE: "2"
-  EPOCHS: "3"
-  LORA_R: "16"
-  LORA_ALPHA: "32"
+# This file MUST live at: cai_integration/jobs_config_vlm.yaml
+# Used by: python cai_integration/create_jobs.py --config cai_integration/jobs_config_vlm.yaml
+#
+# Pipeline:
+#   setup_environment → download_dataset → convert_stcray_vlm → train_vlm_qlora → evaluate_vlm
+#
+# Environment Variables (override at trigger time via --env KEY=VALUE):
+#   MODEL_NAME:    Model to fine-tune (default: Qwen/Qwen3-VL-2B-Instruct)
+#   BATCH_SIZE:    Training batch size (default: 2 for T4 16GB VRAM)
+#   EPOCHS:        Number of training epochs (default: 3)
+#   LORA_R:        LoRA rank (default: 16)
+#   LORA_ALPHA:    LoRA alpha (default: 32)
+#   LEARNING_RATE: Learning rate (default: 2e-4)
+#   RESUME_FROM_CHECKPOINT: Checkpoint path to resume from (default: "" = fresh start)
+#
+# Job Dependencies (auto-triggered by CAI on parent success):
+#   setup_environment → download_dataset → convert_stcray_vlm → train_vlm_qlora → evaluate_vlm
 
 jobs:
-  # Job 1: Download and prepare STCray dataset
-  download_dataset:
-    name: "Download STCray Dataset"
-    description: "Download and extract STCray dataset from Git LFS, process annotations"
-    script_path: "cai_integration/download_dataset.py"
-    runtime_identifier: "python3.11"
-    timeout: 1800  # 30 minutes
-    cpu: 2
-    memory: "8Gi"
-    environment_variables:
-      FORCE_REPROCESS: "false"  # Set to "true" to force reprocessing
-    success_message: "STCray dataset downloaded and processed successfully"
-    failure_message: "Failed to download or process STCray dataset"
-
-  # Job 2: Convert STCray to VLM format
-  convert_to_vlm:
-    parent_job_key: download_dataset
-    name: "Convert STCray to VLM Format"
-    description: "Transform STCray annotations to VQA-style JSONL for VLM training"
-    script_path: "data/convert_stcray_to_vlm.py"
-    runtime_identifier: "python3.11"
-    timeout: 900  # 15 minutes
+  # Job 1: Setup Python Environment (ROOT JOB)
+  setup_environment:
+    name: "VLM Setup Python Environment"
+    description: "Create Python venv and install dependencies (PyTorch, Transformers, PEFT, TRL, BitsAndBytes)"
+    script: "cai_integration/setup_environment.py"
+    kernel: "python3"
     cpu: 4
-    memory: "16Gi"
-    arguments:
-      - "--input-dir"
-      - "data/stcray_processed"
-      - "--output-dir"
-      - "data/stcray_vlm"
-    success_message: "Dataset converted to VLM format successfully"
-    failure_message: "Failed to convert dataset to VLM format"
+    memory: 16
+    timeout: 3600  # 1 hour
+    parent_job_key: null
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      FORCE_REINSTALL: "false"
+      REQUIREMENTS_FILE: "setup/requirements_vlm_train.txt"
 
-  # Job 3: Train VLM with QLoRA
+  # Job 2: Download STCray Dataset
+  download_dataset:
+    name: "VLM Download STCray Dataset"
+    description: "Download STCray dataset from HuggingFace (46K images, 21 threat categories)"
+    script: "cai_integration/download_dataset.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 8
+    timeout: 3600  # 1 hour
+    parent_job_key: "setup_environment"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      FORCE_REPROCESS: "false"
+
+  # Job 3: Convert STCray to VLM Format
+  convert_stcray_vlm:
+    name: "VLM Convert STCray to VQA Format"
+    description: "Transform STCray annotations to VQA-style JSONL for VLM training (train/val/test splits)"
+    script: "cai_integration/convert_stcray_vlm.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 16
+    timeout: 1800  # 30 minutes
+    parent_job_key: "download_dataset"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      INPUT_DIR: "data/stcray_processed"
+      OUTPUT_DIR: "data/stcray_vlm"
+      VAL_RATIO: "0.1"
+      SEED: "42"
+
+  # Job 4: Train VLM with QLoRA
   train_vlm_qlora:
-    parent_job_key: convert_to_vlm
-    name: "Train Qwen3-VL-2B with QLoRA"
-    description: "Fine-tune Qwen3-VL-2B-Instruct using QLoRA on STCray dataset"
-    script_path: "training/train_vlm_qlora.py"
-    runtime_identifier: "python3.11"
-    timeout: 172800  # 48 hours (2 days for full training)
+    name: "VLM Train Qwen3-VL-2B QLoRA"
+    description: "Fine-tune Qwen3-VL-2B-Instruct with QLoRA on STCray VQA dataset (Phase A domain adaptation)"
+    script: "cai_integration/train_vlm.py"
+    kernel: "python3"
     cpu: 8
-    memory: "64Gi"
+    memory: 64
     gpu: 1
-    gpu_type: "T4"  # T4 GPU with 16GB VRAM
-    environment_variables:
-      # Model and data
-      MODEL_NAME: "${MODEL_NAME}"
+    timeout: 172800  # 48 hours
+    parent_job_key: "convert_stcray_vlm"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      MODEL_NAME: "Qwen/Qwen3-VL-2B-Instruct"
       TRAIN_DATA: "data/stcray_vlm/stcray_vlm_train.jsonl"
-      EVAL_DATA: "data/stcray_vlm/stcray_vlm_test.jsonl"
+      EVAL_DATA: "data/stcray_vlm/stcray_vlm_val.jsonl"
       OUTPUT_DIR: "/home/cdsw/checkpoints/qwen3vl-2b-xray-qlora"
-      # Training hyperparameters
-      NUM_TRAIN_EPOCHS: "${EPOCHS}"
-      PER_DEVICE_TRAIN_BATCH_SIZE: "${BATCH_SIZE}"
-      PER_DEVICE_EVAL_BATCH_SIZE: "${BATCH_SIZE}"
+      BATCH_SIZE: "2"
+      EPOCHS: "3"
       GRADIENT_ACCUMULATION_STEPS: "4"
       LEARNING_RATE: "2e-4"
       WARMUP_STEPS: "100"
@@ -82,102 +94,42 @@ jobs:
       LOGGING_STEPS: "10"
       SAVE_STEPS: "500"
       EVAL_STEPS: "500"
-      # QLoRA parameters
-      LORA_R: "${LORA_R}"
-      LORA_ALPHA: "${LORA_ALPHA}"
+      LORA_R: "16"
+      LORA_ALPHA: "32"
       LORA_DROPOUT: "0.05"
       SEED: "42"
-    arguments:
-      - "--model-name"
-      - "${MODEL_NAME}"
-      - "--train-data"
-      - "${TRAIN_DATA}"
-      - "--eval-data"
-      - "${EVAL_DATA}"
-      - "--output-dir"
-      - "${OUTPUT_DIR}"
-      - "--num-train-epochs"
-      - "${NUM_TRAIN_EPOCHS}"
-      - "--per-device-train-batch-size"
-      - "${PER_DEVICE_TRAIN_BATCH_SIZE}"
-      - "--per-device-eval-batch-size"
-      - "${PER_DEVICE_EVAL_BATCH_SIZE}"
-      - "--gradient-accumulation-steps"
-      - "${GRADIENT_ACCUMULATION_STEPS}"
-      - "--learning-rate"
-      - "${LEARNING_RATE}"
-      - "--warmup-steps"
-      - "${WARMUP_STEPS}"
-      - "--max-seq-length"
-      - "${MAX_SEQ_LENGTH}"
-      - "--logging-steps"
-      - "${LOGGING_STEPS}"
-      - "--save-steps"
-      - "${SAVE_STEPS}"
-      - "--eval-steps"
-      - "${EVAL_STEPS}"
-      - "--lora-r"
-      - "${LORA_R}"
-      - "--lora-alpha"
-      - "${LORA_ALPHA}"
-      - "--lora-dropout"
-      - "${LORA_DROPOUT}"
-      - "--seed"
-      - "${SEED}"
-    success_message: "VLM training completed successfully"
-    failure_message: "VLM training failed - check logs for details"
+      RESUME_FROM_CHECKPOINT: ""
 
-  # Job 4: Evaluate fine-tuned model
+  # Job 5: Evaluate Fine-tuned Model
   evaluate_vlm:
-    parent_job_key: train_vlm_qlora
-    name: "Evaluate Fine-tuned VLM"
-    description: "Compare base model vs fine-tuned model on test set"
-    script_path: "evaluation/eval_vlm_qlora.py"
-    runtime_identifier: "python3.11"
-    timeout: 7200  # 2 hours
+    name: "VLM Evaluate Fine-tuned Model"
+    description: "Compare base vs fine-tuned model on STCray test set (precision, recall, F1, IoU)"
+    script: "cai_integration/evaluate_vlm.py"
+    kernel: "python3"
     cpu: 4
-    memory: "32Gi"
+    memory: 32
     gpu: 1
-    gpu_type: "T4"
-    environment_variables:
-      BASE_MODEL: "${MODEL_NAME}"
+    timeout: 7200  # 2 hours
+    parent_job_key: "train_vlm_qlora"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      BASE_MODEL: "Qwen/Qwen3-VL-2B-Instruct"
       FINETUNED_MODEL: "/home/cdsw/checkpoints/qwen3vl-2b-xray-qlora/final"
       TEST_DATA: "data/stcray_vlm/stcray_vlm_test.jsonl"
       OUTPUT_DIR: "/home/cdsw/test_results/vlm_qlora_eval"
       IOU_THRESHOLD: "0.5"
-      NUM_SAMPLES: ""  # Empty = evaluate all samples
-    arguments:
-      - "--base-model"
-      - "${BASE_MODEL}"
-      - "--finetuned-model"
-      - "${FINETUNED_MODEL}"
-      - "--test-data"
-      - "${TEST_DATA}"
-      - "--output-dir"
-      - "${OUTPUT_DIR}"
-      - "--iou-threshold"
-      - "${IOU_THRESHOLD}"
-    success_message: "Evaluation completed - results saved to test_results/"
-    failure_message: "Evaluation failed - check logs"
+      NUM_SAMPLES: ""
 
-# Job execution order (defined by parent_job_key):
-# 1. download_dataset
-# 2. convert_to_vlm (depends on: download_dataset)
-# 3. train_vlm_qlora (depends on: convert_to_vlm)
-# 4. evaluate_vlm (depends on: train_vlm_qlora)
-
-# Monitoring and alerts
-monitoring:
-  enabled: true
-  metrics:
-    - job_duration
-    - gpu_utilization
-    - memory_usage
-    - training_loss
-    - evaluation_metrics
-
+# Execution order (defined by parent_job_key):
+# 1. setup_environment        (root — installs PyTorch, Transformers, PEFT, TRL, etc.)
+# 2. download_dataset          (depends on: setup_environment)
+# 3. convert_stcray_vlm        (depends on: download_dataset)
+# 4. train_vlm_qlora           (depends on: convert_stcray_vlm)
+# 5. evaluate_vlm              (depends on: train_vlm_qlora)
+#
 # Resource notes:
-# - T4 GPU (16GB VRAM): Sufficient for QLoRA training with batch_size=2
-# - Training time: ~36-45 hours for 3 epochs on 37,316 images
+# - T4 GPU (16GB VRAM): sufficient for QLoRA training with batch_size=2
+# - Training time: ~36-45 hours for 3 epochs on ~37K training images
 # - Checkpoint size: ~50-100MB (LoRA adapters only)
-# - Memory peak: ~6-8GB VRAM during training
+# - Peak VRAM: ~6-8GB during training (4-bit quantization + LoRA)
+# - Checkpoints saved every 500 steps for CAI job resumption

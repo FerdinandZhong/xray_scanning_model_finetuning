@@ -116,3 +116,6 @@ htmlcov/
 .coverage.*
 coverage.xml
 *.cover
+
+# Oh My ClaudeCode
+.omc/
