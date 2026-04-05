@@ -353,7 +353,7 @@ def main():
         max_grad_norm=1.0,
         dataloader_num_workers=4,
         remove_unused_columns=False,  # Critical: keeps pixel_values & image_grid_thw
-        report_to="tensorboard",
+        report_to="none",
         seed=args.seed,
         gradient_checkpointing=True,
     )
