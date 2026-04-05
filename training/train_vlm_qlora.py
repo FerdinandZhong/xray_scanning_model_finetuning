@@ -342,7 +342,7 @@ def main():
         save_steps=args.save_steps,
         eval_steps=args.eval_steps if eval_dataset else None,
         save_total_limit=3,  # Keep only last 3 checkpoints
-        evaluation_strategy="steps" if eval_dataset else "no",
+        eval_strategy="steps" if eval_dataset else "no",
         load_best_model_at_end=True if eval_dataset else False,
         metric_for_best_model="eval_loss",
         greater_is_better=False,
