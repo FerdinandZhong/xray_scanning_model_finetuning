@@ -240,6 +240,7 @@ jobs:
                   config['jobs']['yolo_training']['timeout'] = 10800  # 3 hours (accommodate CPU training)
                   config['jobs']['yolo_training']['parent_job_key'] = 'download_xray_baggage'
                   config['jobs']['yolo_training']['gpu'] = 0  # CPU-only for small dataset
+                  config['jobs']['yolo_training'].setdefault('environment', {})['YOLO_DEVICE'] = 'cpu'
                   if 'download_luggage_xray' in config['jobs']:
                       del config['jobs']['download_luggage_xray']
                   if 'download_dataset' in config['jobs']:
