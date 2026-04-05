@@ -35,6 +35,7 @@ jobs:
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       FORCE_REINSTALL: "false"
+      REQUIREMENTS_FILE: "setup/requirements_vlm_train.txt"
 
   # Job 2: Download STCray Dataset
   download_dataset:

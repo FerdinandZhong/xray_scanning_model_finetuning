@@ -43,6 +43,20 @@ check_existing_setup() {
             echo "  (datasets package missing, reinstall needed)"
             return 1
         fi
+        # If REQUIREMENTS_FILE is set, validate that the specific deps are present
+        if [ -n "${REQUIREMENTS_FILE:-}" ]; then
+            case "$REQUIREMENTS_FILE" in
+                *vlm_train*)
+                    if "$VENV_PATH/bin/python" -c "import transformers; import torch; import peft; import trl; import bitsandbytes" 2>/dev/null; then
+                        echo "  (VLM training environment detected)"
+                        return 0
+                    else
+                        echo "  (VLM training deps missing, install needed)"
+                        return 1
+                    fi
+                    ;;
+            esac
+        fi
         # Check for YOLO requirements (torch + ultralytics)
         if "$VENV_PATH/bin/python" -c "import torch; from ultralytics import YOLO" 2>/dev/null; then
             echo "  (YOLO environment detected)"
@@ -135,9 +149,11 @@ else
         USE_UV=true
     fi
 
-    # Install dependencies from requirements.txt
-    # Auto-detect YOLO vs VLM based on available requirements files
-    if [ -f "setup/requirements_yolo.txt" ]; then
+    # Install dependencies from requirements file
+    # Priority: REQUIREMENTS_FILE env var > auto-detect (YOLO > full VLM)
+    if [ -n "${REQUIREMENTS_FILE:-}" ] && [ -f "$REQUIREMENTS_FILE" ]; then
+        echo "Using requirements file from REQUIREMENTS_FILE env var: $REQUIREMENTS_FILE"
+    elif [ -f "setup/requirements_yolo.txt" ]; then
         REQUIREMENTS_FILE="setup/requirements_yolo.txt"
         echo "Installing YOLO dependencies (lightweight, no DeepSpeed/vLLM)..."
     elif [ -f "setup/requirements.txt" ]; then
