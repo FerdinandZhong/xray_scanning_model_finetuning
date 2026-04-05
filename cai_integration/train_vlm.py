@@ -32,6 +32,16 @@ import sys
 from pathlib import Path
 
 
+def get_venv_env(project_root: Path) -> dict:
+    """Build subprocess environment with venv properly activated."""
+    venv_dir = project_root / ".venv"
+    env = os.environ.copy()
+    env["VIRTUAL_ENV"] = str(venv_dir)
+    env["PATH"] = f"{venv_dir / 'bin'}:{env.get('PATH', '')}"
+    env.pop("PYTHONHOME", None)
+    return env
+
+
 def main():
     """Execute VLM QLoRA training."""
     print("=" * 60)
@@ -106,6 +116,7 @@ def main():
     print(f"  Evaluation samples: {n_eval}")
 
     # Check GPU availability
+    venv_env = get_venv_env(project_root)
     try:
         gpu_check = subprocess.run(
             [str(venv_python), "-c",
@@ -116,6 +127,7 @@ def main():
             cwd=str(project_root),
             capture_output=True,
             text=True,
+            env=venv_env,
         )
         print(gpu_check.stdout.strip())
     except Exception as e:
@@ -162,8 +174,8 @@ def main():
     print(f"  Command: {' '.join(cmd)}")
     print()
 
-    # Execute training
-    result = subprocess.run(cmd, cwd=str(project_root))
+    # Execute training with venv activated
+    result = subprocess.run(cmd, cwd=str(project_root), env=venv_env)
 
     if result.returncode != 0:
         print(f"Error: Training failed with exit code {result.returncode}")
