@@ -81,7 +81,7 @@ class JobRunner:
     def load_jobs_config(self, config_path: str = None) -> Dict:
         """Load jobs configuration."""
         if config_path is None:
-            config_path = Path(__file__).parent / "jobs_config.yaml"
+            config_path = Path(__file__).parent / "jobs_config_yolo.yaml"
         else:
             config_path = Path(config_path)
 
