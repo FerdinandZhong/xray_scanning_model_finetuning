@@ -16,9 +16,15 @@ Features:
 
 import argparse
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Optional
+
+# Ensure Trainer loss logs are visible in CAI stdout
+logging.basicConfig(level=logging.INFO, format="%(message)s")
+import transformers
+transformers.logging.set_verbosity_info()
 
 import torch
 from transformers import (
@@ -354,6 +360,7 @@ def main():
         dataloader_num_workers=4,
         remove_unused_columns=False,  # Critical: keeps pixel_values & image_grid_thw
         report_to="none",
+        logging_first_step=True,
         seed=args.seed,
         gradient_checkpointing=True,
     )
