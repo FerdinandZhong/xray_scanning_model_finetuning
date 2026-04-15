@@ -49,13 +49,15 @@ def main():
         print()
 
         # Attempt gdown download
+        archive_path.mkdir(parents=True, exist_ok=True)
         venv_python = get_venv_python()
         try:
             run_in_venv([
                 venv_python, "-c",
                 "import gdown; "
-                "gdown.download(id='1jEk-h5Uv0-d3RdLf8cSHKXhuhalqD3l4', "
-                f"output='{archive_path}/hixray.zip', fuzzy=True)"
+                "gdown.download("
+                "'https://drive.google.com/uc?id=1jEk-h5Uv0-d3RdLf8cSHKXhuhalqD3l4', "
+                f"'{archive_path}/hixray.zip')"
             ], check=False)
             archives = list(archive_path.glob("*.zip"))
         except Exception as e:
