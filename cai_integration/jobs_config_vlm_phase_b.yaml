@@ -32,7 +32,21 @@ jobs:
       FORCE_REINSTALL: "false"
       REQUIREMENTS_FILE: "setup/requirements_phase_b.txt"
 
-  # Job 2: Prepare HiXray Dataset
+  # Job 2: Download STCray Dataset
+  download_dataset:
+    name: "Phase B Download STCray Dataset"
+    description: "Download STCray dataset from HuggingFace (46K images, 21 threat categories)"
+    script: "cai_integration/download_dataset.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 8
+    timeout: 3600
+    parent_job_key: "setup_environment"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      FORCE_REPROCESS: "false"
+
+  # Job 3: Prepare HiXray Dataset
   prepare_hixray:
     name: "Phase B Prepare HiXray Dataset"
     description: "Extract and verify HiXray dataset (45K everyday item images). Pre-stage archive to /home/cdsw/data/hixray_raw/ before running."
@@ -41,7 +55,7 @@ jobs:
     cpu: 4
     memory: 16
     timeout: 7200
-    parent_job_key: "setup_environment"
+    parent_job_key: "download_dataset"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       HIXRAY_ARCHIVE: "data/hixray_raw"
