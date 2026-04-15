@@ -17,7 +17,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent if "__file__" in dir() else Path("/home/cdsw/cai_integration")))
 from utils import PROJECT_ROOT, get_venv_python, run_in_venv, should_skip, write_done_marker
 
 
