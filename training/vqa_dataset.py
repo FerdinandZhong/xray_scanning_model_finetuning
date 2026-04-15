@@ -193,6 +193,9 @@ def collate_fn(batch, processor, max_seq_length=2048, use_chat_template=True):
         result["pixel_values"] = inputs["pixel_values"]
     if "image_grid_thw" in inputs:
         result["image_grid_thw"] = inputs["image_grid_thw"]
+    # Required by Qwen3-VL for M-RoPE (multimodal rotary position embedding)
+    if "mm_token_type_ids" in inputs:
+        result["mm_token_type_ids"] = inputs["mm_token_type_ids"]
 
     return result
 

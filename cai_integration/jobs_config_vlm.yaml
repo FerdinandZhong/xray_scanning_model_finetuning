@@ -71,13 +71,13 @@ jobs:
   # Job 4: Train VLM with QLoRA
   train_vlm_qlora:
     name: "VLM Train Qwen3-VL-2B QLoRA"
-    description: "Fine-tune Qwen3-VL-2B-Instruct with QLoRA on STCray VQA dataset (Phase A domain adaptation)"
+    description: "Fine-tune Qwen3-VL-2B-Instruct with QLoRA on STCray VQA dataset (Phase A domain adaptation, L40 GPU)"
     script: "cai_integration/train_vlm.py"
     kernel: "python3"
     cpu: 8
-    memory: 64
+    memory: 96
     gpu: 1
-    timeout: 172800  # 48 hours
+    timeout: 86400  # 48 hours
     parent_job_key: "convert_stcray_vlm"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
@@ -85,9 +85,9 @@ jobs:
       TRAIN_DATA: "data/stcray_vlm/stcray_vlm_train.jsonl"
       EVAL_DATA: "data/stcray_vlm/stcray_vlm_val.jsonl"
       OUTPUT_DIR: "/home/cdsw/checkpoints/qwen3vl-2b-xray-qlora"
-      BATCH_SIZE: "2"
+      BATCH_SIZE: "6"
       EPOCHS: "3"
-      GRADIENT_ACCUMULATION_STEPS: "4"
+      GRADIENT_ACCUMULATION_STEPS: "2"
       LEARNING_RATE: "2e-4"
       WARMUP_STEPS: "100"
       MAX_SEQ_LENGTH: "2048"

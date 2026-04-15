@@ -17,15 +17,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-
-def get_venv_env(project_root: Path) -> dict:
-    """Build subprocess environment with venv properly activated."""
-    venv_dir = project_root / ".venv"
-    env = os.environ.copy()
-    env["VIRTUAL_ENV"] = str(venv_dir)
-    env["PATH"] = f"{venv_dir / 'bin'}:{env.get('PATH', '')}"
-    env.pop("PYTHONHOME", None)
-    return env
+sys.path.insert(0, str(Path(__file__).parent))
+from utils import get_venv_env
 
 
 def main():
