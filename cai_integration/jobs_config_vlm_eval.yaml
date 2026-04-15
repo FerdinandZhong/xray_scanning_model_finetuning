@@ -1,0 +1,117 @@
+# CAI Job Pipeline for VLM Evaluation: Calibration, Adaptive Loop, Declaration Matching
+#
+# Runs Phase 3+4 experiments: logprob calibration, adaptive loop validation,
+# and end-to-end declaration matching benchmark.
+#
+# Prerequisites:
+#   - Phase B completed (merged model at /home/cdsw/models/qwen3vl-2b-pgrav-merged)
+#   - Test datasets available
+#
+# Pipeline:
+#   setup_environment → build_category_hints → eval_calibration
+#     → eval_adaptive_loop → eval_declaration
+#
+# Usage:
+#   python cai_integration/create_jobs.py --project-id $PID --config cai_integration/jobs_config_vlm_eval.yaml
+#   python cai_integration/trigger_jobs.py --project-id $PID --jobs-config cai_integration/jobs_config_vlm_eval.yaml
+
+jobs:
+  # Job 1: Setup Environment (ROOT)
+  setup_environment:
+    name: "Eval Setup Environment"
+    description: "Install combined YOLO + VLM dependencies for evaluation"
+    script: "cai_integration/setup_environment.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 16
+    timeout: 3600
+    parent_job_key: null
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      FORCE_REINSTALL: "false"
+      REQUIREMENTS_FILE: "setup/requirements_phase_b.txt"
+
+  # Job 2: Build Category Hints
+  build_category_hints:
+    name: "Eval Build Category Hints"
+    description: "Generate static category-description lookup (~50 entries) from STCray+HiXray annotations"
+    script: "cai_integration/build_category_hints.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 8
+    timeout: 1800
+    parent_job_key: "setup_environment"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      STCRAY_DIR: "data/stcray_processed"
+      HIXRAY_DIR: "data/hixray_processed"
+      OUTPUT_PATH: "data/category_hints.json"
+      FORCE_REPROCESS: "false"
+
+  # Job 3: Calibration Analysis (E_cal)
+  eval_calibration:
+    name: "Eval Logprob Calibration (E_cal)"
+    description: "Validate VLM token logprobs as uncertainty signal. Target: ECE < 0.15"
+    script: "cai_integration/eval_calibration.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 48
+    gpu: 1
+    timeout: 7200
+    parent_job_key: "build_category_hints"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      MODEL_PATH: "/home/cdsw/models/qwen3vl-2b-pgrav-merged"
+      TEST_DATA: "data/pgrav_vqa/pgrav_val.jsonl"
+      OUTPUT_DIR: "/home/cdsw/test_results/calibration"
+      NUM_SAMPLES: "500"
+
+  # Job 4: Adaptive Loop Evaluation (E_adapt)
+  eval_adaptive_loop:
+    name: "Eval Adaptive Loop (E_adapt)"
+    description: "Compare single-pass vs uncertainty-gated adaptive loop. Target: >= 5% recall gain"
+    script: "cai_integration/eval_adaptive_loop.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 32
+    gpu: 1
+    timeout: 7200
+    parent_job_key: "eval_calibration"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      MODEL_PATH: "/home/cdsw/models/qwen3vl-2b-pgrav-merged"
+      YOLO_MODEL: "runs/detect/class_agnostic_xray/weights/best.pt"
+      CATEGORY_HINTS: "data/category_hints.json"
+      TEST_DATA: "data/pgrav_vqa/pgrav_test.jsonl"
+      OUTPUT_DIR: "/home/cdsw/test_results/adaptive_loop"
+      ENTROPY_THRESHOLD: "1.5"
+      NUM_SAMPLES: "200"
+
+  # Job 5: Declaration Matching (E7)
+  eval_declaration:
+    name: "Eval Declaration Matching (E7)"
+    description: "End-to-end customs verification: X-ray + declaration -> mismatch report"
+    script: "cai_integration/eval_declaration.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 32
+    gpu: 1
+    timeout: 7200
+    parent_job_key: "eval_adaptive_loop"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      MODEL_PATH: "/home/cdsw/models/qwen3vl-2b-pgrav-merged"
+      YOLO_MODEL: "runs/detect/class_agnostic_xray/weights/best.pt"
+      CATEGORY_HINTS: "data/category_hints.json"
+      DECLARATION_DATA: "data/declaration_benchmark.json"
+      OUTPUT_DIR: "/home/cdsw/test_results/declaration_matching"
+      NUM_SAMPLES: ""
+
+# Execution order:
+# 1. setup_environment    (root — installs deps)
+# 2. build_category_hints  (generate category_hints.json)
+# 3. eval_calibration      (E_cal: logprob entropy vs accuracy, ECE)
+# 4. eval_adaptive_loop    (E_adapt: single-pass vs loop comparison)
+# 5. eval_declaration      (E7: end-to-end declaration F1, undeclared recall)
+#
+# Total estimated time: ~6-8 hours on single T4 GPU
