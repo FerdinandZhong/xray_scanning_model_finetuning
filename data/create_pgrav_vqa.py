@@ -88,7 +88,7 @@ def get_confusable_hints(category: str, k: int = 3) -> list[str]:
 
 def run_yolo_on_image(yolo_model, image_path: str) -> list[dict]:
     """Run YOLO on an image and return proposals."""
-    results = yolo_model.predict(image_path, conf=0.1, verbose=False)
+    results = yolo_model.predict(image_path, conf=0.05, verbose=False)
     proposals = []
     if len(results) > 0 and results[0].boxes is not None:
         for box in results[0].boxes:

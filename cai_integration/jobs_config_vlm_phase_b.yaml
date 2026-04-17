@@ -82,24 +82,24 @@ jobs:
   # Job 4: Train Class-Agnostic YOLO
   train_yolo_class_agnostic:
     name: "Phase B Train Class-Agnostic YOLO"
-    description: "Train YOLOv11-small as class-agnostic object detector on ~90K X-ray images (~6-8h on L40)"
+    description: "Train YOLOv11-medium as class-agnostic object detector on ~90K X-ray images (~10-14h on L40)"
     script: "cai_integration/train_yolo_class_agnostic.py"
     kernel: "python3"
     cpu: 8
     memory: 48
     gpu: 1
-    timeout: 43200
+    timeout: 57600
     parent_job_key: "prepare_class_agnostic_yolo"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       DATA_YAML: "data/class_agnostic_yolo/data.yaml"
-      MODEL_NAME: "yolo11s.pt"
+      MODEL_NAME: "yolo11m.pt"
       EPOCHS: "150"
-      BATCH_SIZE: "64"
+      BATCH_SIZE: "32"
       IMG_SIZE: "640"
       PATIENCE: "25"
       PROJECT: "runs/detect"
-      RUN_NAME: "class_agnostic_xray_v2"
+      RUN_NAME: "class_agnostic_xray_v3"
       FORCE_REPROCESS: "false"
 
   # Job 5: Generate Dual-Format VQA Data
