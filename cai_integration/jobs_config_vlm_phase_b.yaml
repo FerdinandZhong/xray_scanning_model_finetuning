@@ -32,7 +32,21 @@ jobs:
       FORCE_REINSTALL: "false"
       REQUIREMENTS_FILE: "setup/requirements_phase_b.txt"
 
-  # Job 2: Prepare HiXray Dataset
+  # Job 2: Download STCray Dataset
+  download_dataset:
+    name: "Phase B Download STCray Dataset"
+    description: "Download STCray dataset from HuggingFace (46K images, 21 threat categories)"
+    script: "cai_integration/download_dataset.py"
+    kernel: "python3"
+    cpu: 4
+    memory: 8
+    timeout: 3600
+    parent_job_key: "setup_environment"
+    runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
+    environment:
+      FORCE_REPROCESS: "false"
+
+  # Job 3: Prepare HiXray Dataset
   prepare_hixray:
     name: "Phase B Prepare HiXray Dataset"
     description: "Extract and verify HiXray dataset (45K everyday item images). Pre-stage archive to /home/cdsw/data/hixray_raw/ before running."
@@ -41,7 +55,7 @@ jobs:
     cpu: 4
     memory: 16
     timeout: 7200
-    parent_job_key: "setup_environment"
+    parent_job_key: "download_dataset"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       HIXRAY_ARCHIVE: "data/hixray_raw"
@@ -68,24 +82,24 @@ jobs:
   # Job 4: Train Class-Agnostic YOLO
   train_yolo_class_agnostic:
     name: "Phase B Train Class-Agnostic YOLO"
-    description: "Train YOLOv11-nano as class-agnostic object detector on ~90K X-ray images (~4-6h on L40)"
+    description: "Train YOLOv11-medium as class-agnostic object detector on ~90K X-ray images (~10-14h on L40)"
     script: "cai_integration/train_yolo_class_agnostic.py"
     kernel: "python3"
     cpu: 8
     memory: 48
     gpu: 1
-    timeout: 36000
+    timeout: 57600
     parent_job_key: "prepare_class_agnostic_yolo"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
       DATA_YAML: "data/class_agnostic_yolo/data.yaml"
-      MODEL_NAME: "yolo11n.pt"
-      EPOCHS: "100"
-      BATCH_SIZE: "96"
+      MODEL_NAME: "yolo11m.pt"
+      EPOCHS: "150"
+      BATCH_SIZE: "32"
       IMG_SIZE: "640"
-      PATIENCE: "15"
+      PATIENCE: "25"
       PROJECT: "runs/detect"
-      RUN_NAME: "class_agnostic_xray"
+      RUN_NAME: "class_agnostic_xray_v3"
       FORCE_REPROCESS: "false"
 
   # Job 5: Generate Dual-Format VQA Data
