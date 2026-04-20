@@ -266,96 +266,63 @@ jobs:
           config_files = config_map.get(model_type, ['cai_integration/jobs_config_vlm.yaml'])
           config_file = config_files[0]  # primary config for YOLO param updates
           
-          with open(config_file) as f:
-              config = yaml.safe_load(f)
-          
-          # Update force_reinstall for all model types
-          config['jobs']['setup_environment']['environment']['FORCE_REINSTALL'] = 'true' if '${{ github.event.inputs.force_reinstall }}' == 'true' else 'false'
-          
-          if model_type == 'yolo':
-              # Configure YOLO-specific parameters
-              dataset = '${{ github.event.inputs.dataset }}'
-              config['jobs']['yolo_training']['environment']['MODEL_NAME'] = '${{ github.event.inputs.yolo_model }}'
-              config['jobs']['yolo_training']['environment']['EPOCHS'] = '${{ github.event.inputs.yolo_epochs }}'
-              config['jobs']['yolo_training']['environment']['EXPORT_ONNX'] = 'true' if '${{ github.event.inputs.export_onnx }}' == 'true' else 'false'
-              config['jobs']['yolo_training']['environment']['DATASET'] = dataset
+          # Update force_reinstall and save each config
+          force_val = 'true' if '${{ github.event.inputs.force_reinstall }}' == 'true' else 'false'
+          for cf in config_files:
+              with open(cf) as f:
+                  config = yaml.safe_load(f)
 
-              # Adjust timeout and dependencies based on dataset
-              if dataset == 'xray_baggage':
-                  # X-Ray Baggage only — from Git LFS, quick test
-                  # Can run on CPU (2-3h) or GPU (30-45min)
-                  config['jobs']['yolo_training']['timeout'] = 10800  # 3 hours (accommodate CPU training)
-                  config['jobs']['yolo_training']['parent_job_key'] = 'download_xray_baggage'
-                  config['jobs']['yolo_training']['gpu'] = 0  # CPU-only for small dataset
-                  config['jobs']['yolo_training'].setdefault('environment', {})['YOLO_DEVICE'] = 'cpu'
-                  if 'download_luggage_xray' in config['jobs']:
-                      del config['jobs']['download_luggage_xray']
-                  if 'download_dataset' in config['jobs']:
-                      del config['jobs']['download_dataset']
-                  if 'combine_datasets' in config['jobs']:
-                      del config['jobs']['combine_datasets']
-                  print(f"✓ X-Ray Baggage: Git LFS → extract COCO → convert to YOLO")
-              elif dataset == 'luggage_xray':
-                  # Luggage X-ray only — no STCray, no combine step
-                  config['jobs']['yolo_training']['timeout'] = 7200  # 2 hours
-                  config['jobs']['yolo_training']['parent_job_key'] = 'download_luggage_xray'
-                  if 'download_dataset' in config['jobs']:
-                      del config['jobs']['download_dataset']
-                  if 'download_xray_baggage' in config['jobs']:
-                      del config['jobs']['download_xray_baggage']
-                  if 'combine_datasets' in config['jobs']:
-                      del config['jobs']['combine_datasets']
-                  print(f"✓ Luggage X-ray: Will download from Roboflow")
-              elif dataset == 'combined_xray_yolo':
-                  # Combined: needs luggage_xray + STCray (from Git LFS) + baggage + combine step
-                  config['jobs']['yolo_training']['timeout'] = 14400  # 4 hours
-                  config['jobs']['yolo_training']['parent_job_key'] = 'combine_datasets'
-                  print(f"✓ Combined dataset: luggage_xray + STCray + baggage (Git LFS) → combine_datasets → yolo_training")
-              elif dataset == 'cargoxray':
-                  # CargoXray is in Git LFS, no download needed
-                  config['jobs']['yolo_training']['timeout'] = 3600  # 1 hour
-                  config['jobs']['yolo_training']['parent_job_key'] = 'setup_environment'
-                  if 'download_luggage_xray' in config['jobs']:
-                      del config['jobs']['download_luggage_xray']
-                  if 'download_dataset' in config['jobs']:
-                      del config['jobs']['download_dataset']
-                  if 'download_xray_baggage' in config['jobs']:
-                      del config['jobs']['download_xray_baggage']
-                  if 'combine_datasets' in config['jobs']:
-                      del config['jobs']['combine_datasets']
-                  print(f"✓ CargoXray: Using Git LFS (no download job needed)")
-              else:  # stcray
-                  # STCray only — RAR files pulled from Git LFS by setup_environment
-                  config['jobs']['yolo_training']['timeout'] = 14400  # 4 hours
-                  config['jobs']['yolo_training']['parent_job_key'] = 'download_dataset'
-                  config['jobs']['download_dataset']['timeout'] = 3600  # 1 hour
-                  if 'download_luggage_xray' in config['jobs']:
-                      del config['jobs']['download_luggage_xray']
-                  if 'download_xray_baggage' in config['jobs']:
-                      del config['jobs']['download_xray_baggage']
-                  if 'combine_datasets' in config['jobs']:
-                      del config['jobs']['combine_datasets']
-                  print(f"✓ STCray: RAR files from Git LFS → extract → process annotations")
+              # Find root job (parent_job_key is null) and set FORCE_REINSTALL
+              for job_key, job_cfg in config.get('jobs', {}).items():
+                  if job_cfg.get('parent_job_key') is None:
+                      job_cfg.setdefault('environment', {})['FORCE_REINSTALL'] = force_val
+                      break
 
-              print(f"✓ YOLO configuration:")
-              print(f"  Dataset: {dataset}")
-              print(f"  Model: {config['jobs']['yolo_training']['environment']['MODEL_NAME']}")
-              print(f"  Epochs: {config['jobs']['yolo_training']['environment']['EPOCHS']}")
-              print(f"  Export ONNX: {config['jobs']['yolo_training']['environment']['EXPORT_ONNX']}")
-              print(f"  Parent Job: {config['jobs']['yolo_training']['parent_job_key']}")
-              print(f"  Timeout: {config['jobs']['yolo_training']['timeout']}s")
-          else:
-              # VLM pipelines — no runtime params needed, config is self-contained
-              labels = {
-                  'vlm': 'Phase A (domain adaptation on STCray)',
-                  'vlm_phase_b': 'Phase B (proposal-guided dual-format training)',
-                  'vlm_eval': 'Evaluation (calibration + adaptive loop + declaration)',
-              }
-              print(f"✓ VLM configuration: {labels.get(model_type, model_type)}")
-              print(f"  Config: {config_file}")
-          
-          with open(config_file, 'w') as f:
-              yaml.dump(config, f, default_flow_style=False)
+              # Apply YOLO-specific params only to the GPU YOLO config
+              if model_type == 'yolo' and 'yolo_training' in config.get('jobs', {}):
+                  dataset = '${{ github.event.inputs.dataset }}'
+                  config['jobs']['yolo_training']['environment']['MODEL_NAME'] = '${{ github.event.inputs.yolo_model }}'
+                  config['jobs']['yolo_training']['environment']['EPOCHS'] = '${{ github.event.inputs.yolo_epochs }}'
+                  config['jobs']['yolo_training']['environment']['EXPORT_ONNX'] = 'true' if '${{ github.event.inputs.export_onnx }}' == 'true' else 'false'
+                  config['jobs']['yolo_training']['environment']['DATASET'] = dataset
+
+                  if dataset == 'xray_baggage':
+                      config['jobs']['yolo_training']['timeout'] = 10800
+                      config['jobs']['yolo_training']['parent_job_key'] = 'download_xray_baggage'
+                      config['jobs']['yolo_training']['gpu'] = 0
+                      config['jobs']['yolo_training'].setdefault('environment', {})['YOLO_DEVICE'] = 'cpu'
+                      for k in ['download_luggage_xray', 'download_dataset', 'combine_datasets']:
+                          config['jobs'].pop(k, None)
+                      print(f"✓ X-Ray Baggage: Git LFS → extract COCO → convert to YOLO")
+                  elif dataset == 'luggage_xray':
+                      config['jobs']['yolo_training']['timeout'] = 7200
+                      config['jobs']['yolo_training']['parent_job_key'] = 'download_luggage_xray'
+                      for k in ['download_dataset', 'download_xray_baggage', 'combine_datasets']:
+                          config['jobs'].pop(k, None)
+                      print(f"✓ Luggage X-ray: Will download from Roboflow")
+                  elif dataset == 'combined_xray_yolo':
+                      config['jobs']['yolo_training']['timeout'] = 14400
+                      config['jobs']['yolo_training']['parent_job_key'] = 'combine_datasets'
+                      print(f"✓ Combined dataset")
+                  elif dataset == 'cargoxray':
+                      config['jobs']['yolo_training']['timeout'] = 3600
+                      config['jobs']['yolo_training']['parent_job_key'] = 'setup_environment'
+                      for k in ['download_luggage_xray', 'download_dataset', 'download_xray_baggage', 'combine_datasets']:
+                          config['jobs'].pop(k, None)
+                      print(f"✓ CargoXray: Using Git LFS")
+                  else:  # stcray
+                      config['jobs']['yolo_training']['timeout'] = 14400
+                      config['jobs']['yolo_training']['parent_job_key'] = 'download_dataset'
+                      config['jobs']['download_dataset']['timeout'] = 3600
+                      for k in ['download_luggage_xray', 'download_xray_baggage', 'combine_datasets']:
+                          config['jobs'].pop(k, None)
+                      print(f"✓ STCray: RAR files from Git LFS")
+
+                  print(f"✓ YOLO: dataset={dataset}, model={config['jobs']['yolo_training']['environment']['MODEL_NAME']}")
+
+              with open(cf, 'w') as f:
+                  yaml.dump(config, f, default_flow_style=False)
+              print(f"✓ Updated: {cf}")
           PYTHON_SCRIPT
           echo "✅ Configuration updated"
 
