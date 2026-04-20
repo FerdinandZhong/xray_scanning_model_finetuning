@@ -463,7 +463,7 @@ jobs:
     timeout-minutes: 10
     if: |
       always() &&
-      (github.event.inputs.model_type == 'yolo' || github.event.inputs.model_type == 'yolo_cpu') &&
+      (github.event.inputs.model_type == 'yolo' || github.event.inputs.model_type == 'yolo_cpu' || github.event.inputs.model_type == 'all') &&
       github.event.inputs.deploy_api == 'true' &&
       needs.create-jobs.result == 'success'
 
