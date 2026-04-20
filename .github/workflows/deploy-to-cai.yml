@@ -10,9 +10,12 @@ on:
         type: choice
         options:
           - yolo
+          - yolo_cpu
           - vlm
           - vlm_phase_b
           - vlm_eval
+          - all_vlm
+          - all
       dataset:
         description: '[YOLO] Dataset to train on'
         required: false
@@ -87,6 +90,9 @@ jobs:
               combined_xray_yolo) echo "   🚀 Combined: luggage_xray + STCray + baggage (~4 h, 55K imgs, Git LFS)" ;;
               stcray)             echo "   🚀 STCray only: Production model (~4 h, Git LFS)" ;;
             esac
+          elif [ "${{ github.event.inputs.model_type }}" = "yolo_cpu" ]; then
+            echo "✅ Using YOLO CPU-only (X-Ray Baggage quick test)"
+            echo "   Pipeline: setup → download baggage → train YOLO on CPU"
           elif [ "${{ github.event.inputs.model_type }}" = "vlm" ]; then
             echo "✅ Using VLM Phase A (Qwen3-VL-2B QLoRA domain adaptation)"
             echo "   Pipeline: setup → download STCray → convert to VQA → train QLoRA → evaluate"
@@ -96,6 +102,10 @@ jobs:
           elif [ "${{ github.event.inputs.model_type }}" = "vlm_eval" ]; then
             echo "✅ Using VLM Evaluation (Calibration + Adaptive Loop + Declaration)"
             echo "   Pipeline: setup → category hints → E_cal → E_adapt → E7"
+          elif [ "${{ github.event.inputs.model_type }}" = "all_vlm" ]; then
+            echo "✅ Combined: VLM Phase A + Phase B + Eval (3 pipelines)"
+          elif [ "${{ github.event.inputs.model_type }}" = "all" ]; then
+            echo "✅ Combined: ALL pipelines (YOLO + YOLO CPU + VLM A + VLM B + Eval)"
           fi
 
       - name: Validate configuration files
@@ -104,9 +114,20 @@ jobs:
           MODEL_TYPE="${{ github.event.inputs.model_type }}"
           case "$MODEL_TYPE" in
             yolo)         test -f cai_integration/jobs_config_yolo.yaml ;;
+            yolo_cpu)     test -f cai_integration/jobs_config_yolo_cpu_baggage.yaml ;;
             vlm)          test -f cai_integration/jobs_config_vlm.yaml ;;
             vlm_phase_b)  test -f cai_integration/jobs_config_vlm_phase_b.yaml ;;
             vlm_eval)     test -f cai_integration/jobs_config_vlm_eval.yaml ;;
+            all_vlm)
+              test -f cai_integration/jobs_config_vlm.yaml
+              test -f cai_integration/jobs_config_vlm_phase_b.yaml
+              test -f cai_integration/jobs_config_vlm_eval.yaml ;;
+            all)
+              test -f cai_integration/jobs_config_yolo.yaml
+              test -f cai_integration/jobs_config_yolo_cpu_baggage.yaml
+              test -f cai_integration/jobs_config_vlm.yaml
+              test -f cai_integration/jobs_config_vlm_phase_b.yaml
+              test -f cai_integration/jobs_config_vlm_eval.yaml ;;
           esac
           test -f cai_integration/create_jobs.py
           test -f cai_integration/trigger_jobs.py
@@ -122,13 +143,20 @@ jobs:
           echo "🔍 Validating YAML syntax..."
           pip install pyyaml
           MODEL_TYPE="${{ github.event.inputs.model_type }}"
+          CONFIGS=""
           case "$MODEL_TYPE" in
-            yolo)         CONFIG="cai_integration/jobs_config_yolo.yaml" ;;
-            vlm)          CONFIG="cai_integration/jobs_config_vlm.yaml" ;;
-            vlm_phase_b)  CONFIG="cai_integration/jobs_config_vlm_phase_b.yaml" ;;
-            vlm_eval)     CONFIG="cai_integration/jobs_config_vlm_eval.yaml" ;;
+            yolo)         CONFIGS="cai_integration/jobs_config_yolo.yaml" ;;
+            yolo_cpu)     CONFIGS="cai_integration/jobs_config_yolo_cpu_baggage.yaml" ;;
+            vlm)          CONFIGS="cai_integration/jobs_config_vlm.yaml" ;;
+            vlm_phase_b)  CONFIGS="cai_integration/jobs_config_vlm_phase_b.yaml" ;;
+            vlm_eval)     CONFIGS="cai_integration/jobs_config_vlm_eval.yaml" ;;
+            all_vlm)      CONFIGS="cai_integration/jobs_config_vlm.yaml cai_integration/jobs_config_vlm_phase_b.yaml cai_integration/jobs_config_vlm_eval.yaml" ;;
+            all)          CONFIGS="cai_integration/jobs_config_yolo.yaml cai_integration/jobs_config_yolo_cpu_baggage.yaml cai_integration/jobs_config_vlm.yaml cai_integration/jobs_config_vlm_phase_b.yaml cai_integration/jobs_config_vlm_eval.yaml" ;;
           esac
-          python -c "import yaml; yaml.safe_load(open('$CONFIG'))"
+          for CONFIG in $CONFIGS; do
+            python -c "import yaml; yaml.safe_load(open('$CONFIG'))"
+            echo "  ✅ $CONFIG"
+          done
           echo "✅ YAML syntax valid"
 
   setup-project:
@@ -206,12 +234,26 @@ jobs:
           
           model_type = '${{ github.event.inputs.model_type }}'
           config_map = {
-              'yolo': 'cai_integration/jobs_config_yolo.yaml',
-              'vlm': 'cai_integration/jobs_config_vlm.yaml',
-              'vlm_phase_b': 'cai_integration/jobs_config_vlm_phase_b.yaml',
-              'vlm_eval': 'cai_integration/jobs_config_vlm_eval.yaml',
+              'yolo': ['cai_integration/jobs_config_yolo.yaml'],
+              'yolo_cpu': ['cai_integration/jobs_config_yolo_cpu_baggage.yaml'],
+              'vlm': ['cai_integration/jobs_config_vlm.yaml'],
+              'vlm_phase_b': ['cai_integration/jobs_config_vlm_phase_b.yaml'],
+              'vlm_eval': ['cai_integration/jobs_config_vlm_eval.yaml'],
+              'all_vlm': [
+                  'cai_integration/jobs_config_vlm.yaml',
+                  'cai_integration/jobs_config_vlm_phase_b.yaml',
+                  'cai_integration/jobs_config_vlm_eval.yaml',
+              ],
+              'all': [
+                  'cai_integration/jobs_config_yolo.yaml',
+                  'cai_integration/jobs_config_yolo_cpu_baggage.yaml',
+                  'cai_integration/jobs_config_vlm.yaml',
+                  'cai_integration/jobs_config_vlm_phase_b.yaml',
+                  'cai_integration/jobs_config_vlm_eval.yaml',
+              ],
           }
-          config_file = config_map.get(model_type, 'cai_integration/jobs_config_vlm.yaml')
+          config_files = config_map.get(model_type, ['cai_integration/jobs_config_vlm.yaml'])
+          config_file = config_files[0]  # primary config for YOLO param updates
           
           with open(config_file) as f:
               config = yaml.safe_load(f)
@@ -313,18 +355,23 @@ jobs:
         run: |
           MODEL_TYPE="${{ github.event.inputs.model_type }}"
           case "$MODEL_TYPE" in
-            yolo)         CONFIG_FILE="cai_integration/jobs_config_yolo.yaml" ;;
-            vlm)          CONFIG_FILE="cai_integration/jobs_config_vlm.yaml" ;;
-            vlm_phase_b)  CONFIG_FILE="cai_integration/jobs_config_vlm_phase_b.yaml" ;;
-            vlm_eval)     CONFIG_FILE="cai_integration/jobs_config_vlm_eval.yaml" ;;
+            yolo)         CONFIGS="cai_integration/jobs_config_yolo.yaml" ;;
+            yolo_cpu)     CONFIGS="cai_integration/jobs_config_yolo_cpu_baggage.yaml" ;;
+            vlm)          CONFIGS="cai_integration/jobs_config_vlm.yaml" ;;
+            vlm_phase_b)  CONFIGS="cai_integration/jobs_config_vlm_phase_b.yaml" ;;
+            vlm_eval)     CONFIGS="cai_integration/jobs_config_vlm_eval.yaml" ;;
+            all_vlm)      CONFIGS="cai_integration/jobs_config_vlm.yaml cai_integration/jobs_config_vlm_phase_b.yaml cai_integration/jobs_config_vlm_eval.yaml" ;;
+            all)          CONFIGS="cai_integration/jobs_config_yolo.yaml cai_integration/jobs_config_yolo_cpu_baggage.yaml cai_integration/jobs_config_vlm.yaml cai_integration/jobs_config_vlm_phase_b.yaml cai_integration/jobs_config_vlm_eval.yaml" ;;
           esac
           echo "📋 Creating $MODEL_TYPE jobs..."
 
-          echo "Using config: $CONFIG_FILE"
-          python cai_integration/create_jobs.py \
-            --project-id ${{ needs.setup-project.outputs.project_id }} \
-            --config "$CONFIG_FILE"
-          echo "✅ Jobs created"
+          for CONFIG_FILE in $CONFIGS; do
+            echo "Using config: $CONFIG_FILE"
+            python cai_integration/create_jobs.py \
+              --project-id ${{ needs.setup-project.outputs.project_id }} \
+              --config "$CONFIG_FILE"
+          done
+          echo "✅ All jobs created"
 
       - name: Create job summary
         if: always()
@@ -350,6 +397,12 @@ jobs:
             if [ "${{ github.event.inputs.deploy_api }}" = "true" ]; then
               echo "4. deploy_yolo_application ← API deployment job" >> $GITHUB_STEP_SUMMARY
             fi
+          elif [ "$MODEL_TYPE" = "yolo_cpu" ]; then
+            echo "### YOLO CPU (X-Ray Baggage Quick Test)" >> $GITHUB_STEP_SUMMARY
+            echo "- **Model**: yolov8n (CPU-only)" >> $GITHUB_STEP_SUMMARY
+            echo "- **Dataset**: X-Ray Baggage (1.5K images)" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Jobs: setup → download baggage → train YOLO (CPU)" >> $GITHUB_STEP_SUMMARY
           elif [ "$MODEL_TYPE" = "vlm" ]; then
             echo "### VLM Phase A (Domain Adaptation)" >> $GITHUB_STEP_SUMMARY
             echo "- **Model**: Qwen/Qwen3-VL-2B-Instruct" >> $GITHUB_STEP_SUMMARY
@@ -377,6 +430,20 @@ jobs:
             echo "- E7: End-to-end declaration matching (F1)" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "### Jobs: setup → hints → calibration → adaptive loop → declaration" >> $GITHUB_STEP_SUMMARY
+          elif [ "$MODEL_TYPE" = "all_vlm" ]; then
+            echo "### Combined: All VLM Pipelines" >> $GITHUB_STEP_SUMMARY
+            echo "Creates jobs for **3 pipelines** in the same CAI project:" >> $GITHUB_STEP_SUMMARY
+            echo "1. **Phase A**: setup → download → convert → train QLoRA → evaluate" >> $GITHUB_STEP_SUMMARY
+            echo "2. **Phase B**: setup → HiXray → YOLO → VQA data → train PG-RAV → merge → evaluate" >> $GITHUB_STEP_SUMMARY
+            echo "3. **Eval**: setup → hints → E_cal → E_adapt → E7" >> $GITHUB_STEP_SUMMARY
+          elif [ "$MODEL_TYPE" = "all" ]; then
+            echo "### Combined: ALL Pipelines" >> $GITHUB_STEP_SUMMARY
+            echo "Creates jobs for **5 pipelines** in the same CAI project:" >> $GITHUB_STEP_SUMMARY
+            echo "1. **YOLO GPU**: full YOLO detection training" >> $GITHUB_STEP_SUMMARY
+            echo "2. **YOLO CPU**: X-Ray Baggage quick test" >> $GITHUB_STEP_SUMMARY
+            echo "3. **VLM Phase A**: domain adaptation" >> $GITHUB_STEP_SUMMARY
+            echo "4. **VLM Phase B**: proposal-guided training" >> $GITHUB_STEP_SUMMARY
+            echo "5. **VLM Eval**: calibration + adaptive loop + declaration" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Force Reinstall**: ${{ github.event.inputs.force_reinstall }}" >> $GITHUB_STEP_SUMMARY
@@ -396,7 +463,7 @@ jobs:
     timeout-minutes: 10
     if: |
       always() &&
-      github.event.inputs.model_type == 'yolo' &&
+      (github.event.inputs.model_type == 'yolo' || github.event.inputs.model_type == 'yolo_cpu') &&
       github.event.inputs.deploy_api == 'true' &&
       needs.create-jobs.result == 'success'
 
@@ -546,18 +613,23 @@ jobs:
         run: |
           MODEL_TYPE="${{ github.event.inputs.model_type }}"
           case "$MODEL_TYPE" in
-            yolo)         CONFIG_FILE="cai_integration/jobs_config_yolo.yaml" ;;
-            vlm)          CONFIG_FILE="cai_integration/jobs_config_vlm.yaml" ;;
-            vlm_phase_b)  CONFIG_FILE="cai_integration/jobs_config_vlm_phase_b.yaml" ;;
-            vlm_eval)     CONFIG_FILE="cai_integration/jobs_config_vlm_eval.yaml" ;;
+            yolo)         CONFIGS="cai_integration/jobs_config_yolo.yaml" ;;
+            yolo_cpu)     CONFIGS="cai_integration/jobs_config_yolo_cpu_baggage.yaml" ;;
+            vlm)          CONFIGS="cai_integration/jobs_config_vlm.yaml" ;;
+            vlm_phase_b)  CONFIGS="cai_integration/jobs_config_vlm_phase_b.yaml" ;;
+            vlm_eval)     CONFIGS="cai_integration/jobs_config_vlm_eval.yaml" ;;
+            all_vlm)      CONFIGS="cai_integration/jobs_config_vlm.yaml cai_integration/jobs_config_vlm_phase_b.yaml cai_integration/jobs_config_vlm_eval.yaml" ;;
+            all)          CONFIGS="cai_integration/jobs_config_yolo.yaml cai_integration/jobs_config_yolo_cpu_baggage.yaml cai_integration/jobs_config_vlm.yaml cai_integration/jobs_config_vlm_phase_b.yaml cai_integration/jobs_config_vlm_eval.yaml" ;;
           esac
-          echo "🚀 Triggering $MODEL_TYPE pipeline..."
-          echo "Note: This only triggers the root job (setup_environment)"
-          echo "Child jobs will auto-trigger via CAI dependencies"
-          python cai_integration/trigger_jobs.py \
-            --project-id ${{ needs.setup-project.outputs.project_id }} \
-            --jobs-config "$CONFIG_FILE"
-          echo "✅ Pipeline triggered"
+          echo "🚀 Triggering $MODEL_TYPE pipeline(s)..."
+          echo "Note: Only root jobs are triggered; child jobs auto-cascade via CAI dependencies"
+          for CONFIG_FILE in $CONFIGS; do
+            echo "  Triggering: $CONFIG_FILE"
+            python cai_integration/trigger_jobs.py \
+              --project-id ${{ needs.setup-project.outputs.project_id }} \
+              --jobs-config "$CONFIG_FILE"
+          done
+          echo "✅ All pipelines triggered"
 
       - name: Create summary
         if: always()
@@ -576,6 +648,11 @@ jobs:
               echo "- setup_environment (triggered now)" >> $GITHUB_STEP_SUMMARY
               echo "- download_dataset → yolo_training" >> $GITHUB_STEP_SUMMARY
               ;;
+            yolo_cpu)
+              echo "### YOLO CPU Job Chain" >> $GITHUB_STEP_SUMMARY
+              echo "- setup_environment (triggered now)" >> $GITHUB_STEP_SUMMARY
+              echo "- download_xray_baggage → yolo_training (CPU)" >> $GITHUB_STEP_SUMMARY
+              ;;
             vlm)
               echo "### VLM Phase A Job Chain" >> $GITHUB_STEP_SUMMARY
               echo "- setup_environment (triggered now)" >> $GITHUB_STEP_SUMMARY
@@ -590,6 +667,17 @@ jobs:
               echo "### VLM Eval Job Chain (5 jobs)" >> $GITHUB_STEP_SUMMARY
               echo "- setup_environment (triggered now)" >> $GITHUB_STEP_SUMMARY
               echo "- build_hints → eval_calibration → eval_adaptive_loop → eval_declaration" >> $GITHUB_STEP_SUMMARY
+              ;;
+            all_vlm)
+              echo "### All VLM Pipelines Triggered" >> $GITHUB_STEP_SUMMARY
+              echo "- Phase A: setup → download → convert → train → evaluate" >> $GITHUB_STEP_SUMMARY
+              echo "- Phase B: setup → HiXray → YOLO → VQA → train → merge → evaluate" >> $GITHUB_STEP_SUMMARY
+              echo "- Eval: setup → hints → E_cal → E_adapt → E7" >> $GITHUB_STEP_SUMMARY
+              ;;
+            all)
+              echo "### ALL Pipelines Triggered" >> $GITHUB_STEP_SUMMARY
+              echo "- YOLO GPU + YOLO CPU + VLM Phase A + Phase B + Eval" >> $GITHUB_STEP_SUMMARY
+              echo "- Each pipeline runs independently via its own root job" >> $GITHUB_STEP_SUMMARY
               ;;
           esac
 
