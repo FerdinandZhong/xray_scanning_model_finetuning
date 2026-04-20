@@ -246,7 +246,7 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Create CML jobs from configuration")
     parser.add_argument("--project-id", required=True, help="CML project ID")
-    parser.add_argument("--config", help="Path to jobs configuration YAML")
+    parser.add_argument("--config", nargs="+", help="Path(s) to jobs configuration YAML (accepts multiple)")
     parser.add_argument(
         "--job-env",
         action="append",
@@ -277,9 +277,14 @@ def main():
 
     try:
         manager = JobManager()
-        success = manager.run(args.project_id, args.config, job_env_injections=job_env_injections)
-        # Don't call sys.exit(0) in CAI's interactive environment
-        if not success:
+        # Support multiple configs in a single API session
+        configs = args.config if args.config else [None]
+        all_success = True
+        for config_path in configs:
+            success = manager.run(args.project_id, config_path, job_env_injections=job_env_injections)
+            if not success:
+                all_success = False
+        if not all_success:
             sys.exit(1)
     except KeyboardInterrupt:
         print("\n⚠️  Job creation cancelled by user")
