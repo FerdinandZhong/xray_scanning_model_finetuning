@@ -100,6 +100,7 @@ jobs:
       PATIENCE: "25"
       PROJECT: "runs/detect"
       RUN_NAME: "class_agnostic_xray_v3"
+      FITNESS_WEIGHTS: "recall"
       FORCE_REPROCESS: "false"
 
   # Job 5: Generate Dual-Format VQA Data
@@ -115,7 +116,7 @@ jobs:
     parent_job_key: "train_yolo_class_agnostic"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
-      YOLO_MODEL: "runs/detect/class_agnostic_xray/weights/best.pt"
+      YOLO_MODEL: "runs/detect/class_agnostic_xray_v3/weights/best.pt"
       STCRAY_DIR: "data/stcray_processed"
       HIXRAY_DIR: "data/hixray_processed"
       OUTPUT_DIR: "data/pgrav_vqa"
@@ -134,7 +135,7 @@ jobs:
     parent_job_key: "create_pgrav_vqa"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
-      MODEL_NAME: "Qwen/Qwen3-VL-2B-Instruct"
+      MODEL_NAME: "/home/cdsw/models/qwen3vl-7b-xray-merged"
       TRAIN_DATA: "data/pgrav_vqa/pgrav_train.jsonl"
       EVAL_DATA: "data/pgrav_vqa/pgrav_val.jsonl"
       OUTPUT_DIR: "/home/cdsw/checkpoints/qwen3vl-2b-pgrav-qlora"
@@ -166,9 +167,9 @@ jobs:
     parent_job_key: "train_vlm_phase_b"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
-      BASE_MODEL: "Qwen/Qwen3-VL-2B-Instruct"
+      BASE_MODEL: "/home/cdsw/models/qwen3vl-7b-xray-merged"
       ADAPTER_PATH: "/home/cdsw/checkpoints/qwen3vl-2b-pgrav-qlora/final"
-      OUTPUT_DIR: "/home/cdsw/models/qwen3vl-2b-pgrav-merged"
+      OUTPUT_DIR: "/home/cdsw/models/qwen3vl-7b-pgrav-merged"
 
   # Job 8: Evaluate Phase B Model
   evaluate_vlm:
@@ -183,8 +184,8 @@ jobs:
     parent_job_key: "merge_lora"
     runtime_identifier: "docker.repository.cloudera.com/cloudera/cdsw/ml-runtime-pbj-workbench-python3.10-cuda:2026.01.1-b6"
     environment:
-      BASE_MODEL: "Qwen/Qwen3-VL-2B-Instruct"
-      FINETUNED_MODEL: "/home/cdsw/models/qwen3vl-2b-pgrav-merged"
+      BASE_MODEL: "/home/cdsw/models/qwen3vl-7b-xray-merged"
+      FINETUNED_MODEL: "/home/cdsw/models/qwen3vl-7b-pgrav-merged"
       TEST_DATA: "data/pgrav_vqa/pgrav_test.jsonl"
       OUTPUT_DIR: "/home/cdsw/test_results/vlm_pgrav_eval"
       IOU_THRESHOLD: "0.5"

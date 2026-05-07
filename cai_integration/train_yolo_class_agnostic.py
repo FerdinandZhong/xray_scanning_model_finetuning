@@ -68,6 +68,8 @@ def main():
     print()
 
     venv_python = get_venv_python()
+    fitness_weights = os.getenv("FITNESS_WEIGHTS", "recall")
+
     cmd = [
         venv_python, "-u",
         "training/train_yolo.py",
@@ -79,6 +81,7 @@ def main():
         "--patience", patience,
         "--project", project,
         "--name", run_name,
+        "--fitness-weights", fitness_weights,
     ]
 
     print("Starting class-agnostic YOLO training...")

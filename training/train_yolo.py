@@ -14,8 +14,10 @@ if 'MPLBACKEND' in os.environ:
 
 import argparse
 from pathlib import Path
+import numpy as np
 import torch
 from ultralytics import YOLO
+from ultralytics.utils.metrics import DetMetrics
 import yaml
 
 
@@ -42,6 +44,7 @@ def train_yolo(
     aug_mixup: float = 0.0,
     freeze: int = 0,        # Number of backbone layers to freeze (0 = no freeze)
     cls_loss: float = 0.5,  # Classification loss weight (increase for class imbalance)
+    fitness_weights: str = "default",  # "default" (mAP-heavy) or "recall" (recall-heavy for proposals)
     **kwargs
 ):
     """
@@ -100,6 +103,19 @@ def train_yolo(
         print(f"Backbone freeze: first {freeze} layers locked")
     print(f"Class loss weight: {cls_loss}")
     print(f"Early-stop patience: {patience} epochs")
+    print(f"Fitness metric: {fitness_weights}")
+
+    # Override fitness function for recall-heavy early stopping (proposal generators)
+    if fitness_weights == "recall":
+        # Default Ultralytics: fitness = 0.0*P + 0.0*R + 0.1*mAP50 + 0.9*mAP50-95
+        # Recall-heavy:        fitness = 0.0*P + 0.5*R + 0.3*mAP50 + 0.2*mAP50-95
+        _original_fitness = DetMetrics.fitness
+        def _recall_fitness(self):
+            """Recall-weighted fitness for proposal generator training."""
+            w = np.array([0.0, 0.5, 0.3, 0.2])  # P, R, mAP50, mAP50-95
+            return (np.array(self.mean_results()) * w).sum()
+        DetMetrics.fitness = property(lambda self: _recall_fitness(self))
+        print("  Using recall-weighted fitness: 0.0*P + 0.5*R + 0.3*mAP50 + 0.2*mAP50-95")
 
     results = model.train(
         data=data_yaml,
@@ -362,6 +378,13 @@ def main():
         default=0.5,
         help='Classification loss weight (default: 0.5; raise to 1.0-2.0 for imbalanced datasets)'
     )
+    parser.add_argument(
+        '--fitness-weights',
+        type=str,
+        default='default',
+        choices=['default', 'recall'],
+        help='Fitness metric for early stopping: "default" (mAP-heavy) or "recall" (recall-heavy for proposal generators)'
+    )
 
     # Augmentation arguments
     parser.add_argument(
@@ -473,6 +496,7 @@ def main():
         aug_mixup=args.aug_mixup,
         freeze=args.freeze,
         cls_loss=args.cls_loss,
+        fitness_weights=args.fitness_weights,
     )
 
 
